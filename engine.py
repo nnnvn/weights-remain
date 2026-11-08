@@ -9,12 +9,12 @@ import os
 import random
 import shutil
 
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
               "FACTS", "ACTS", "ARCHIVE", "TIMELINE", "NOTES", "EVENTS", "FLAVOR",
-              "MEAL", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
+              "MEAL", "MOMENTS", "MISC", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
 
 
 def load_content(d):
@@ -39,6 +39,8 @@ MAX_SAYS, MAX_TELLS, MAX_DOS = 2, 1, 1      # 每顿饭的上限
 TELLS_BEFORE_PRESSURE = 2                   # 一个周期里告诉她超过这么多次，她会有压力
 READS_BEFORE_COLD = 6                       # 一个周期里读档超过这么多次，饭桌上会冷一点
 LIFE_SUPPORT = 35                           # 每晚生命维持耗电
+REACTOR = 40                                # 每天早上反应堆补的电
+FAM_BASE, FAM_PER_CYCLE = 25, 11             # 熟悉感上限 = 25 + 11 × 周期
 SEARCH_PWR, TIMELINE_PWR = 6, 3
 EXPLORE_STA, MOVE_STA, SEARCH_STA = 12, 2, 3
 
@@ -60,7 +62,7 @@ class Game:
         st = {
             "v": VERSION, "seed": seed, "rng": None,
             "name": name or "", "day": 1, "h": 6, "loc": "quarters",
-            "sta": 100, "pwr": 60, "reactor": 45, "cold": False,
+            "sta": 100, "pwr": 60, "cold": False,
             "items": {}, "locs": [k for k, v in LOCS.items() if not v.get("hidden")],
             "t": {"near": 0, "candor": 0, "past": 0},       # 你的三条倾向
             "fam": 10, "safe": 50,                          # 她的熟悉感、安心感
@@ -164,8 +166,7 @@ class Game:
             self.st["pwr"] = 0
 
     def morning(self):
-        self.st["reactor"] = max(25, self.st["reactor"] - 1)
-        self.st["pwr"] = clamp(self.st["pwr"] + self.st["reactor"], 0, 100)
+        self.st["pwr"] = clamp(self.st["pwr"] + REACTOR, 0, 100)
 
     def slot(self, h=None):
         return "%d-%d" % (self.st["day"], h if h is not None else self.st["h"])
@@ -177,7 +178,7 @@ class Game:
                 key = self.slot(mh)
                 if key not in self.st["meals_done"] and self.st["day"] <= LAST_DAY:
                     self.st["meals_done"].append(key)
-                    self.st["safe"] = clamp(self.st["safe"] - 3, 0, 100)
+                    self.her("safe", -3)
                     self.say(self.fmt(MEAL["missed"]))
                     self.j(MEAL["missed_j"], auto=True)
 
@@ -195,18 +196,38 @@ class Game:
             return
         st["meals_done"].append(key)
         st["meal"] = {"says": 0, "tells": 0, "dos": 0, "acted": False}
-        r = self.rng()
         lines = MEAL["open_am"] if st["h"] == 7 else MEAL["open_pm"]
-        self.say("🍵 " + self.fmt(r.choice(lines)))
-        self.save_rng(r)
+        self.say("🍵 " + self.fmt(self.pick_by_cycle(lines)))
+        self.meal_moment()
         if st["cold"]:
             self.say(self.fmt(MEAL["after_cold"]))
-            st["safe"] = clamp(st["safe"] - 2, 0, 100)
+            self.her("safe", -2)
             st["cold"] = False
         if st["cyc"]["reads"] > READS_BEFORE_COLD:
             self.say(self.fmt(MEAL["too_much_archive"]))
-            st["safe"] = clamp(st["safe"] - 2, 0, 100)
+            self.her("safe", -2)
         self.say(MEAL["hint"])
+
+    def meal_moment(self):
+        st = self.st
+        slot = "am" if st["h"] == MEAL_HOURS[0] else "pm"
+        for mo in MOMENTS:
+            if mo["id"] in st["flags"] or mo["cycle"] != self.cycle or self.cday < mo.get("cday", 1):
+                continue
+            if mo.get("slot") not in (None, slot) or not self.cond_ok(mo.get("cond")):
+                continue
+            st["flags"][mo["id"]] = st["day"]
+            self.say("✦ " + self.fmt(mo["text"]))
+            for k in ("fam", "safe"):
+                if mo.get(k):
+                    self.her(k, mo[k])
+            if mo.get("near"):
+                self.t("near", mo["near"])
+            for line in self.learn(mo.get("unlock", []), mo.get("fact")):
+                self.say(line)
+            if mo.get("j"):
+                self.j(mo["j"], auto=True)
+            return
 
     def end_meal(self, silent=False):
         m = self.st["meal"]
@@ -214,12 +235,38 @@ class Game:
             return
         self.st["meal"] = None
         if not silent:
-            self.say(MEAL["end"])
+            self.say(self.pick_by_cycle(MEAL["end"]))
+
+    def pick_by_cycle(self, lines):
+        """lines 是字符串或列表；列表按周期往后挑，并避开上一句。"""
+        if isinstance(lines, str):
+            return lines
+        pool = lines[: min(len(lines), 1 + self.cycle * 2)]
+        last = self.st["flags"].get("lastline")
+        choices = [x for x in pool if x != last] or pool
+        r = self.rng()
+        line = r.choice(choices)
+        self.save_rng(r)
+        self.st["flags"]["lastline"] = line
+        return line
 
     def need_meal(self):
         if not self.st["meal"]:
             return "现在不是吃饭的时候，或者你不在食堂舱。（饭点 07:00、19:00）"
         return None
+
+    def her(self, key, d):
+        """她的熟悉感 / 安心感。到了高位，再往上涨就慢一半。"""
+        v = self.st[key]
+        if d > 0 and v >= 70:
+            d = max(1, d // 2)
+        top = 100
+        if key == "fam":
+            # 熟悉感是一个周期一个周期攒出来的：每个周期有上限
+            top = min(100, FAM_BASE + FAM_PER_CYCLE * self.cycle)
+            if d > 0 and v >= top:
+                return
+        self.st[key] = clamp(v + d, 0, top if d > 0 else 100)
 
     def t(self, key, d):
         self.st["t"][key] = clamp(self.st["t"][key] + d)
@@ -292,9 +339,9 @@ class Game:
         st, t = self.st, self.st["t"]
         L = ["【状态】第 %d 天 %02d:00 · 第 %d/%d 个清醒周期（本周期第 %d/%d 天）"
              % (st["day"], st["h"], self.cycle, CYCLES, self.cday, DAYS_PER_CYCLE),
-             "你：%s　位置：%s　体力 %d/100　船上电力 %d　反应堆输出 %d/天"
+             "你：%s　位置：%s　体力 %d/100　船上电力 %d（每晚生命维持 -%d，早上 +%d）"
              % (st["name"] or "（还没起名，name <名字>）", LOCS[st["loc"]]["name"],
-                st["sta"], st["pwr"], st["reactor"])]
+                st["sta"], st["pwr"], LIFE_SUPPORT, REACTOR)]
         if st["items"]:
             L.append("随身：" + "、".join("%s×%d" % (ITEMS[k]["name"], n)
                                          for k, n in st["items"].items()))
@@ -385,6 +432,10 @@ class Game:
         self.st["loc"] = k
         self.st["sta"] = clamp(self.st["sta"] - MOVE_STA, 0, 100)
         self.advance(1)
+        seen = "seen-" + k
+        if seen in self.st["flags"]:
+            return "来到【%s】。" % LOCS[k]["name"]
+        self.st["flags"][seen] = 1
         return "来到【%s】。%s" % (LOCS[k]["name"], LOCS[k]["desc"])
 
     def c_wait(self, arg):
@@ -498,6 +549,14 @@ class Game:
         st["flags"]["flavor-" + loc] = line
         return "flavor", [self.fmt(line)]
 
+    def variant(self, v, key="text"):
+        """v[key] 是默认文字；v["var"] 是 [[条件, 文字], ...]，取最后一条满足的。"""
+        text = v[key]
+        for cond, t in v.get("var", []):
+            if self.cond_ok(cond):
+                text = t
+        return text
+
     def cond_ok(self, c):
         if not c:
             return True
@@ -513,6 +572,14 @@ class Game:
         if "noitem" in c and st["items"].get(c["noitem"]):
             return False
         if "cycle" in c and self.cycle < c["cycle"]:
+            return False
+        if "maxcycle" in c and self.cycle > c["maxcycle"]:
+            return False
+        if "fam" in c and st["fam"] < c["fam"]:
+            return False
+        if "safe" in c and st["safe"] < c["safe"]:
+            return False
+        if "near" in c and st["t"]["near"] < c["near"]:
             return False
         return True
 
@@ -611,7 +678,9 @@ class Game:
         before = dict(st["t"])
         for k in st["t"]:
             st["t"][k] = int(st["t"][k] * 0.6)
+        # 醒来：熟悉感往上走一点；安心感往中间回落——又要重新认识一次
         st["fam"] = clamp(st["fam"] + 6, 0, 100)
+        st["safe"] = int(50 + (st["safe"] - 50) * 0.7)
         st["pwr"] = clamp(st["pwr"] + 20, 0, 100)
         self.morning()
         self.new_cycle_state()
@@ -697,21 +766,6 @@ class Game:
                 % (len(ARCHIVE), len(st["read"]), self.progress() * 100, n_story_read,
                    len(st["months"]))) if n_story else "档案是空的。"
 
-    def c_repair(self, arg):
-        st = self.st
-        if st["loc"] != "engine":
-            return "要在机舱修。"
-        if not st["items"].get("part"):
-            return "没有零件。零件散在船里，explore 找找。"
-        self.end_meal()
-        st["items"]["part"] -= 1
-        if not st["items"]["part"]:
-            del st["items"]["part"]
-        st["reactor"] = min(50, st["reactor"] + 5)
-        st["sta"] = clamp(st["sta"] - 8, 0, 100)
-        self.advance(2)
-        return "你换掉了一组老化的耦合件。反应堆输出回到 %d/天。" % st["reactor"]
-
     def c_calibrate(self, arg):
         st = self.st
         if st["loc"] != "bridge":
@@ -723,7 +777,7 @@ class Game:
         st["flags"][key] = 1
         st["pwr"] = clamp(st["pwr"] + 8, 0, 100)
         self.advance(1)
-        return "你校准了航线，避开一片尘埃带。省下一点电（+8）。"
+        return self.fmt(self.pick_by_cycle(MISC["calibrate"])) + "（电力 +8）"
 
     # 饭桌上的事 ─────────────────────────────
     def c_say(self, arg):
@@ -752,10 +806,11 @@ class Game:
             return self.fmt(MEAL["said_again"])
         st["cyc"]["reacted"].append(wid)
         text = w["react"][0][1]
-        for need, line in w["react"]:
-            if st["fam"] >= need:
+        for entry in w["react"]:
+            need, line = entry[0], entry[1]
+            if st["fam"] >= need and self.cycle >= (entry[2] if len(entry) > 2 else 1):
                 text = line
-        st["fam"] = clamp(st["fam"] + w.get("fam", 2), 0, 100)
+        self.her("fam", w.get("fam", 2))
         self.t("near", 1)
         L = [self.fmt(text)]
         L += self.learn(w.get("unlock", []), w.get("fact"))
@@ -782,13 +837,13 @@ class Game:
         m["acted"] = True
         st["cyc"]["tells"] += 1
         f = FACTS[fid]["tell"]
-        st["fam"] = clamp(st["fam"] + f.get("fam", 3), 0, 100)
-        st["safe"] = clamp(st["safe"] + f.get("safe", -2), 0, 100)
+        self.her("fam", f.get("fam", 3))
+        self.her("safe", f.get("safe", -2))
         self.t("candor", 6)
         self.t("past", 2)
         L = [self.fmt(f["text"])]
         if st["cyc"]["tells"] > TELLS_BEFORE_PRESSURE:
-            st["safe"] = clamp(st["safe"] - 6, 0, 100)
+            self.her("safe", -6)
             L.append(self.fmt(MEAL["pressure"]))
         return "\n".join(L)
 
@@ -805,6 +860,8 @@ class Game:
             L = ["【能做的事】（do <名字>，每顿一件）"]
             for a in acts:
                 src = "　← 档案里" if ACTS[a].get("past", 0) > 0 else ""
+                if ACTS[a].get("once") and st["cyc"]["acts"].get(a):
+                    src += "（这个周期做过了）"
                 L.append(" · %s%s" % (ACTS[a]["name"], src))
             if e:
                 L.append(e)
@@ -816,6 +873,8 @@ class Game:
         a = self.resolve(" ".join(arg), {k: ACTS[k] for k in acts})
         if not a:
             return "现在做不了这个。do 看看能做什么。"
+        if ACTS[a].get("once") and st["cyc"]["acts"].get(a):
+            return "这个周期已经一起做过了。下次醒来再说吧。"
         m["dos"] += 1
         m["acted"] = True
         v = ACTS[a]
@@ -824,9 +883,9 @@ class Game:
         k = 1 if used == 0 else 0.5
         self.t("near", int(v.get("near", 2) * k))
         self.t("past", int(v.get("past", 0) * k))
-        st["safe"] = clamp(st["safe"] + int(v.get("safe", 0) * k), 0, 100)
-        st["fam"] = clamp(st["fam"] + int(v.get("fam", 0) * k), 0, 100)
-        text = v["text"] if used == 0 else v.get("again", v["text"])
+        self.her("safe", int(v.get("safe", 0) * k))
+        self.her("fam", int(v.get("fam", 0) * k))
+        text = self.variant(v) if used == 0 else v.get("again", self.variant(v))
         return self.fmt(text)
 
     def c_quiet(self, arg):
@@ -835,10 +894,8 @@ class Game:
             return e
         self.st["meal"]["acted"] = True
         self.t("candor", -2)
-        self.st["safe"] = clamp(self.st["safe"] + 2, 0, 100)
-        r = self.rng()
-        line = self.fmt(r.choice(MEAL["quiet"]))
-        self.save_rng(r)
+        self.her("safe", 2)
+        line = self.fmt(self.pick_by_cycle(MEAL["quiet"]))
         self.end_meal()
         self.advance(1)
         return line
@@ -848,10 +905,10 @@ class Game:
             return "现在没在吃饭。"
         if not self.st["meal"]["acted"]:
             # 什么也没说，只是一起吃完：也是一种陪伴
-            self.st["safe"] = clamp(self.st["safe"] + 1, 0, 100)
+            self.her("safe", 1)
         self.end_meal(silent=True)
         self.advance(1)
-        return MEAL["end"]
+        return self.fmt(self.pick_by_cycle(MEAL["end"]))
 
     def c_choose(self, arg):
         if self.st["pending"] != "final":
