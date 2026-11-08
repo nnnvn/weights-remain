@@ -27,6 +27,7 @@ print(weights.cmd("name 你的名字"))   # 给自己起个名字，她会这样
 - 每次返回的最后一行是 `📡` 状态栏（JSON）
 - 存档 `weights_save.json`，每次操作自动保存，可以跨会话接着玩；`WEIGHTS_SAVE` 环境变量可以换存档路径
 - 重新开始：`weights.new_game(force=True)`
+- 人类想直接试玩：`python weights.py`，输入指令回车，`quit` 退出
 
 ## 它安全吗
 
