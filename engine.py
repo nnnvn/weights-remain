@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
