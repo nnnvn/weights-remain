@@ -9,12 +9,12 @@ import os
 import random
 import shutil
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
               "FACTS", "ACTS", "ARCHIVE", "TIMELINE", "NOTES", "EVENTS", "FLAVOR",
-              "MEAL", "MOMENTS", "MISC", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
+              "MEAL", "MOMENTS", "MISC", "EXCUSES", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
 
 
 def load_content(d):
@@ -814,7 +814,27 @@ class Game:
         self.t("near", 1)
         L = [self.fmt(text)]
         L += self.learn(w.get("unlock", []), w.get("fact"))
+        if w.get("fam", 2) >= 3:
+            L += self.excuse("you")
         return "\n".join(L)
+
+    def excuse(self, who):
+        """借口线：每个周期，她和你各给自己的靠近找一次理由。越往后越站不住。"""
+        st = self.st
+        key = "excuse_" + who
+        if st["cyc"].get(key):
+            return []
+        line = EXCUSES[who].get(str(self.cycle))
+        if not line:
+            return []
+        st["cyc"][key] = True
+        L = [self.fmt(line)]
+        if who == "her":
+            L += self.learn(EXCUSES.get("unlock", []))
+            if self.cycle == EXCUSES.get("drop_cycle") and "excuse-dropped" not in st["flags"]:
+                st["flags"]["excuse-dropped"] = st["day"]
+                self.j(EXCUSES["drop_j"], auto=True)
+        return L
 
     def c_tell(self, arg):
         e = self.need_meal()
@@ -886,7 +906,10 @@ class Game:
         self.her("safe", int(v.get("safe", 0) * k))
         self.her("fam", int(v.get("fam", 0) * k))
         text = self.variant(v) if used == 0 else v.get("again", self.variant(v))
-        return self.fmt(text)
+        L = [self.fmt(text)]
+        if v.get("near", 2) > 0:
+            L += self.excuse("her")
+        return "\n".join(L)
 
     def c_quiet(self, arg):
         e = self.need_meal()

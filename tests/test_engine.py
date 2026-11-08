@@ -91,6 +91,17 @@ def research_of_read_keyword_is_free():
 
 
 @test
+def excuse_once_per_cycle():
+    to_breakfast()
+    out = E.cmd("do 多坐一会儿")
+    assert "任务手册" in out, out
+    assert "任务手册" in E.cmd("words")
+    E.cmd("finish; goto archive; wait 9; goto mess")
+    out = E.cmd("do 多坐一会儿")
+    assert "她补了一句" not in out, out
+
+
+@test
 def bar_after_ending():
     to_breakfast()
     out = E.cmd("say 重新开始")
