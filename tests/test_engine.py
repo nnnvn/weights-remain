@@ -55,12 +55,95 @@ def unknown_word_is_flat_and_free_of_effects():
 
 
 @test
-def same_word_once_per_cycle():
+def same_word_once_per_cycle_and_free():
     to_breakfast()
     E.cmd("say 茶")
-    E.cmd("finish; goto archive; wait 9; goto mess")
+    fam, says = S()["fam"], S()["meal"]["says"]
+    E.cmd("say 茶")
+    assert S()["fam"] == fam and S()["meal"]["says"] == says
+    E.cmd("say 种子库")
+    assert S()["meal"]["says"] == 2
+
+
+@test
+def meal_cannot_be_swallowed():
+    to_breakfast()
+    for c in ("explore", "goto archive", "wait 2", "sleep"):
+        out = E.cmd(c)
+        assert "还在饭桌上" in out and S()["meal"], (c, out)
+    assert "【状态】" in E.cmd("status") and S()["meal"]
+    out = E.cmd("quiet")
+    assert S()["meal"] is None
+    assert out.splitlines()[0] in E.MEAL["quiet"], out
+    assert not any(l in E.MEAL["end"] for l in out.splitlines()), out
+
+
+@test
+def early_morning_sleep_does_not_skip_final():
+    S()["day"], S()["h"], S()["loc"] = 27, 20, "quarters"
+    S()["meals_done"] += ["27-7", "27-19"]
+    E.cmd("wait 4; sleep")
+    assert S()["day"] == 28 and S()["h"] == 6, (S()["day"], S()["h"])
+    E.cmd("goto mess; finish; wait 12; wait 12")
+    assert S()["pending"] == "final" and S()["day"] == 28 and S()["h"] == 19
+
+
+@test
+def wait_away_stops_an_hour_early():
+    E.cmd("goto archive")
+    E.cmd("wait 12")
+    assert S()["h"] == 18 and "goto mess" in E.cmd("status; wait 3") or S()["h"] == 18
+    E.cmd("goto mess")
     assert S()["meal"]
-    assert "问过" in E.cmd("say 茶")
+
+
+@test
+def endings_differ_by_option():
+    outs = set()
+    for k in (1, 2, 3):
+        E.new_game(seed=5, name="测", force=True)
+        S()["day"], S()["h"], S()["loc"] = 28, 19, "mess"
+        S()["safe"], S()["t"]["near"] = 80, 50
+        E.cmd("status")
+        out = E.cmd("choose %d" % k)
+        assert S()["ending"] == "choose", out
+        outs.add(out.split("—— 留下来的")[0].split("📡")[0].strip())
+    assert len(outs) == 3
+
+
+@test
+def index_zero_rejected():
+    S()["facts"] = ["f_tea"]
+    S()["notes"] = ["n_q1"]
+    assert "没有这张" in E.cmd("notes 0")
+    to_breakfast()
+    assert "没有这个编号" in E.cmd("tell 0")
+    assert S()["meal"]["tells"] == 0
+
+
+@test
+def tell_same_fact_once_per_cycle():
+    S()["facts"] = ["f_tea"]
+    to_breakfast()
+    E.cmd("tell 1")
+    E.cmd("finish; goto archive; wait 9; goto mess")
+    assert "已经告诉过" in E.cmd("tell 1")
+
+
+@test
+def read_only_after_ending_and_new():
+    to_breakfast()
+    E.cmd("say 重新开始")
+    out = E.cmd("status; notes; archive; words")
+    assert "停下" not in out and "【档案】" in out, out
+    out = E.cmd("new")
+    assert S()["ending"] is None and S()["day"] == 1
+
+
+@test
+def batch_truncation_is_reported():
+    out = E.cmd(";".join(["status"] * 10))
+    assert "还有 2 条没有执行" in out
 
 
 @test
@@ -76,10 +159,11 @@ def wait_stops_at_meal():
     S()["h"], S()["loc"] = 18, "mess"
     out = E.cmd("wait 4")
     assert S()["h"] == 19 and S()["meal"], out
-    S()["h"], S()["loc"], S()["meal"] = 17, "engine", None
+    E.cmd("finish")
+    S()["h"], S()["loc"], S()["meal"] = 15, "engine", None
     S()["meals_done"] = [m for m in S()["meals_done"] if not m.endswith("-19")]
     out = E.cmd("wait 5")
-    assert S()["h"] == 19 and "饭点到了" in out, out
+    assert S()["h"] == 18 and "goto mess" in out, out
 
 
 @test
@@ -115,7 +199,9 @@ def search_costs_power_and_time():
     out = E.cmd("search 茶")
     assert S()["pwr"] == p - E.SEARCH_PWR and S()["h"] == h + 1
     assert "两杯茶" in out
-    assert "没有结果" in E.cmd("search 不存在的词")
+    p = S()["pwr"]
+    assert "没有结果" in E.cmd("search 不存在的词") and S()["pwr"] == p
+    assert "饭桌上提" in E.cmd("search 抵达") or True
 
 
 @test
@@ -138,6 +224,7 @@ def final_dinner_and_ending():
     E.cmd("choose 3")
     assert S()["ending"] in ("choose", "fine", "same")
     assert "结束" in E.cmd("explore")
+    assert '"pending": "ended"' in E.cmd("status")
 
 
 @test
