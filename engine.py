@@ -119,7 +119,9 @@ class Game:
 
     def bar(self):
         m = self.st["meal"]
-        if m:
+        if self.st["ending"]:
+            meal = "结束"
+        elif m:
             meal = "进行中"
         else:
             nxt = [h for h in MEAL_HOURS if h > self.st["h"]]
@@ -392,8 +394,14 @@ class Game:
             return "wait <小时>"
         n = max(1, min(12, n))
         self.end_meal()
+        stop = self.meal_ahead(n)
+        if stop is not None:
+            n = stop - self.st["h"]
         self.advance(n)
-        return "你等了 %d 小时。现在第 %d 天 %02d:00。" % (n, self.st["day"], self.st["h"])
+        msg = "你等了 %d 小时。现在第 %d 天 %02d:00。" % (n, self.st["day"], self.st["h"])
+        if stop is not None and self.st["loc"] != "mess":
+            msg += "饭点到了，她在食堂舱。"
+        return msg
 
     def c_explore(self, arg):
         n, stop = 1, {"note"}
@@ -429,6 +437,16 @@ class Game:
                 L.append("（饭点到了，她端着两个杯子坐下了。）")
                 break
         return "\n".join(L)
+
+    def meal_ahead(self, hours):
+        """接下来 hours 小时内还没吃的饭点（不管你在哪）。返回那个钟点。"""
+        st = self.st
+        if st["day"] > LAST_DAY:
+            return None
+        for mh in MEAL_HOURS:
+            if st["h"] < mh <= st["h"] + hours and self.slot(mh) not in st["meals_done"]:
+                return mh
+        return None
 
     def meal_soon(self, hours):
         """接下来 hours 小时内有没赶上的饭点（且你不在食堂舱）？返回那个钟点。"""
@@ -616,6 +634,9 @@ class Game:
             return "电力不够，档案终端开不起来。"
         q = " ".join(arg).strip().lower()
         wid = self.resolve(q, WORDS)
+        match = [e for e in ARCHIVE if q in e["kw"] or (wid and wid in e["kw"])]
+        if match and all(e["id"] in st["read"] for e in match):
+            return "检索“%s”：相关的 %d 条记录你都读过了。（没有消耗电力）" % (" ".join(arg), len(match))
         self.end_meal()
         st["pwr"] -= SEARCH_PWR
         st["sta"] = clamp(st["sta"] - SEARCH_STA, 0, 100)
@@ -932,3 +953,20 @@ def cmd(text):
     g.save()
     g.say(g.bar())
     return "\n".join(x for x in g.out if x is not None)
+
+
+def _repl():
+    print(cmd("status"))
+    while True:
+        try:
+            line = input("> ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if line.strip() in ("quit", "exit"):
+            break
+        print(cmd(line))
+
+
+if __name__ == "__main__":
+    _repl()

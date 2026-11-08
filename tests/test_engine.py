@@ -66,8 +66,35 @@ def same_word_once_per_cycle():
 @test
 def missed_meal_costs_safety():
     safe = S()["safe"]
-    E.cmd("wait 3")
+    E._G.advance(3)
     assert S()["safe"] == safe - 3
+
+
+@test
+def wait_stops_at_meal():
+    E.cmd("goto mess; finish; goto archive")
+    S()["h"], S()["loc"] = 18, "mess"
+    out = E.cmd("wait 4")
+    assert S()["h"] == 19 and S()["meal"], out
+    S()["h"], S()["loc"], S()["meal"] = 17, "engine", None
+    S()["meals_done"] = [m for m in S()["meals_done"] if not m.endswith("-19")]
+    out = E.cmd("wait 5")
+    assert S()["h"] == 19 and "饭点到了" in out, out
+
+
+@test
+def research_of_read_keyword_is_free():
+    E.cmd("goto archive; search 记录员; search 记录员; search 记录员")
+    p, h = S()["pwr"], S()["h"]
+    out = E.cmd("search 记录员")
+    assert "都读过了" in out and S()["pwr"] == p and S()["h"] == h, out
+
+
+@test
+def bar_after_ending():
+    to_breakfast()
+    out = E.cmd("say 重新开始")
+    assert '"meal": "结束"' in out
 
 
 @test

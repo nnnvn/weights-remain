@@ -45,7 +45,12 @@ def main():
     tail = ("load_content(json.loads(zlib.decompress(base64.b64decode(\"\".join(_DATA)))"
             ".decode(\"utf-8\")))\n")
 
-    out = HEADER + "import base64\nimport zlib\n" + eng.rstrip() + "\n\n\n" + data + tail
+    # 命令行入口要放在数据读入之后
+    main_guard = ""
+    if 'if __name__ == "__main__":' in eng:
+        i = eng.index('if __name__ == "__main__":')
+        eng, main_guard = eng[:i], "\n\n" + eng[i:].rstrip() + "\n"
+    out = HEADER + "import base64\nimport zlib\n" + eng.rstrip() + "\n\n\n" + data + tail + main_guard
     for bad in ("exec(", "eval(", "subprocess", "socket", "urllib", "requests"):
         assert bad not in out, bad
     path = os.path.join(HERE, "weights.py")

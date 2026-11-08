@@ -65,10 +65,12 @@ def daytime(style, until=17):
         go("archive")
         while st["h"] < until - 6 and len(st["months"]) < 24 and st["pwr"] >= 9:
             E.cmd("timeline %d" % min(m for m in range(1, 25) if m not in st["months"]))
-        i = 0
-        while st["h"] < until and st["pwr"] >= 6 and st["sta"] > 10 and not st["ending"]:
+        i, idle = 0, 0
+        while st["h"] < until and st["pwr"] >= 6 and st["sta"] > 10 and not st["ending"] and idle < 20:
             terms = [E.WORDS[w]["name"] for w in st["words"]] + FILLER_TERMS
+            h0 = (st["day"], st["h"])
             E.cmd("search " + terms[(st["day"] * 7 + i) % len(terms)])
+            idle = idle + 1 if (st["day"], st["h"]) == h0 else 0
             i += 1
         while st["h"] < until and len(st["months"]) < 24 and st["pwr"] >= 3:
             E.cmd("timeline %d" % min(m for m in range(1, 25) if m not in st["months"]))
