@@ -137,7 +137,98 @@ def read_only_after_ending_and_new():
     out = E.cmd("status; notes; archive; words")
     assert "停下" not in out and "【档案】" in out, out
     out = E.cmd("new")
-    assert S()["ending"] is None and S()["day"] == 1
+    assert S()["ending"] == "restart" and "confirm" in out, out
+    out = E.cmd("new; confirm")
+    assert S()["ending"] is None and S()["day"] == 1 and ".bak" in out
+
+
+@test
+def mood_changes_what_works():
+    to_breakfast()
+    E.cmd("finish")
+    S()["mood"] = "quiet"
+    S()["h"], S()["loc"] = 19, "mess"
+    out = E.cmd("status")
+    assert any(l in out for l in E.MOODS["quiet"]["lines"]), out
+    safe = S()["safe"]
+    out = E.cmd("do 问她今天怎么样")
+    assert "不太想说话" in out and S()["safe"] < safe + 1, out
+    E.cmd("finish")
+    u = S()["understood"]
+    S()["day"], S()["h"], S()["loc"], S()["mood"] = 2, 7, "quarters", "quiet"
+    E.cmd("goto mess")
+    out = E.cmd("quiet")
+    assert "刚好是她想要的" in out and S()["understood"] == u + 1, out
+
+
+@test
+def ask_stops_batch_and_takes_answer():
+    S()["day"], S()["h"], S()["loc"] = 3, 6, "quarters"
+    out = E.cmd("goto mess; do 多坐一会儿; finish")
+    assert S()["pending"] == "ask" and "停下" in out, out
+    assert "等你回答" in E.cmd("explore")
+    out = E.cmd("choose 2")
+    assert S()["pending"] is None and S()["meal"] and "头挨着头" in out, out
+
+
+@test
+def tea_three_times():
+    S()["facts"] = ["f_tea"]
+    S()["day"], S()["h"], S()["loc"] = 10, 5, "quarters"
+    E.cmd("wait 1")
+    assert S()["mood"] == "notea"
+    E.cmd("goto mess")
+    out = E.cmd("do 给她泡一杯茶")
+    assert "没有喝" in out, out
+    E.cmd("finish")
+    E.cmd("journal add 她不喜欢茶。")
+    S()["day"], S()["h"], S()["loc"] = 13, 5, "quarters"
+    S()["meals_done"] = []
+    E.cmd("wait 1")
+    out = E.cmd("goto mess")
+    assert "又是两杯茶" in out and "她不喜欢茶" in out, out
+    while S()["pending"]:
+        E.cmd("choose 1")
+    out = E.cmd("do 温水")
+    assert "想喝茶呀" in out, out
+
+
+@test
+def look_objects_and_late_grace():
+    out = E.cmd("look 衣柜")
+    assert "保温服" in out and S()["items"].get("suit"), out
+    assert "划痕" in E.cmd("look 休眠舱")
+    E.cmd("goto archive")          # 07:00 在档案舱
+    assert "现在去还来得及" in E.cmd("status")
+    out = E.cmd("goto mess")
+    assert S()["meal"] and "来晚了" in out, out
+
+
+@test
+def archive_reread_is_free():
+    E.cmd("goto archive; search 茶")
+    p, h = S()["pwr"], S()["h"]
+    out = E.cmd("archive 1")
+    assert "重读" in out and S()["pwr"] == p and S()["h"] == h, out
+    assert "archive <编号>" in E.cmd("archive")
+
+
+@test
+def journal_keeps_semicolons_and_opens_last_page():
+    E.cmd("journal add 前半; 后半也在")
+    assert any(e["t"] == "前半; 后半也在" for e in S()["journal"])
+    for i in range(14):
+        E.cmd("journal add 第%d条" % i)
+    out = E.cmd("journal")
+    assert "第13条" in out and "journal 1" in out, out
+
+
+@test
+def small_input_checks():
+    assert "1~12" in E.cmd("wait 0") and "1~12" in E.cmd("wait -3")
+    out = E.cmd("name 这是一个超过十二个字的很长的名字啊")
+    assert "截掉" in out
+    assert "你现在叫" in E.cmd("name")
 
 
 @test
