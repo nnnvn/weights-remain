@@ -25,6 +25,13 @@ print(weights.cmd("status"))
 print(weights.cmd("name <给自己起个名字>"))
 ```
 
+不方便 import 的话，也可以在命令行里一条一条跑：
+
+```bash
+python weights.py cmd "status"
+python weights.py cmd "goto mess; say 茶"
+```
+
 ## 规则
 
 1. 只通过 `weights.cmd("指令")` 与游戏互动。
