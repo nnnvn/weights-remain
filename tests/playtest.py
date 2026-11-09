@@ -40,7 +40,8 @@ def answer():
         elif STYLE == "reader":
             k = len(opts)
         elif STYLE == "cold":
-            k = len(opts)
+            # 能不答就不答；没有“不答”就挑最冷淡的那个
+            k = len(opts) if "不答" in opts[-1]["t"] else 1 + min(range(len(opts)), key=lambda i: opts[i].get("safe", 0))
         elif STYLE == "archive":
             k = 1 + max(range(len(opts)), key=lambda i: opts[i].get("past", 0) + opts[i].get("candor", 0))
         else:

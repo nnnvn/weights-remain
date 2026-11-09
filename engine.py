@@ -9,13 +9,13 @@ import os
 import random
 import shutil
 
-VERSION = "0.6.1"
+VERSION = "0.7.0"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
               "FACTS", "ACTS", "ARCHIVE", "TIMELINE", "NOTES", "EVENTS", "FLAVOR",
               "MEAL", "MOMENTS", "MISC", "EXCUSES", "ASKS", "MOODS",
-              "MOOD_POOL", "MOOD_FIXED", "FLAVOR_LAST", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
+              "MOOD_POOL", "MOOD_FIXED", "FLAVOR_LAST", "DAY_EVENTS", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
 
 
 def load_content(d):
@@ -339,9 +339,23 @@ class Game:
             st["pwr"] = clamp(st["pwr"] + o["pwr"], 0, 100)
         if o.get("flag"):
             st["flags"][o["flag"]] = st["day"]
+        if o.get("optimal"):
+            st["optimal"] = st.get("optimal", 0) + 1
+        if o.get("skipmeal"):
+            key = self.slot(MEAL_HOURS[1])
+            if key not in st["meals_done"]:
+                st["meals_done"].append(key)
         if o.get("j"):
             self.j(o["j"], auto=True)
         L = [self.fmt(o["r"])]
+        if not st["meal"] and (o.get("loc") or o.get("hours")):
+            if o.get("loc"):
+                st["loc"] = o["loc"]
+                if o["loc"] not in st["locs"]:
+                    st["locs"].append(o["loc"])
+            if o.get("hours"):
+                self.advance(o["hours"])
+            L.append("（现在是 %02d:00，你在【%s】。）" % (st["h"], LOCS[st["loc"]]["name"]))
         if st["meal"]:
             st["meal"]["acted"] = True
             if o.get("end"):
@@ -356,6 +370,37 @@ class Game:
             else:
                 L.append(MEAL["hint"])
         return "\n".join(L)
+
+    def day_event(self):
+        """白天的小事：每天最多一件，在对的时间、对的地方发生。"""
+        st = self.st
+        if st["ending"] or st["pending"] or st["meal"] or st["flags"].get("dayev") == st["day"]:
+            return None
+        for ev in DAY_EVENTS:
+            if ev["id"] in st["flags"] or not ev["cmin"] <= self.cycle <= ev.get("cmax", CYCLES):
+                continue
+            if not ev["hmin"] <= st["h"] <= ev["hmax"]:
+                continue
+            if ev.get("locs") and st["loc"] not in ev["locs"]:
+                continue
+            if ev.get("group") and "group-" + ev["group"] in st["flags"]:
+                continue
+            if self.cond_ok(ev.get("cond")):
+                return ev
+        return None
+
+    def maybe_day_event(self):
+        ev = self.day_event()
+        if not ev:
+            return
+        st = self.st
+        st["flags"][ev["id"]] = st["day"]
+        st["flags"]["dayev"] = st["day"]
+        if ev.get("group"):
+            st["flags"]["group-" + ev["group"]] = st["day"]
+        self.say("", "✧ " + self.fmt(ev["text"]))
+        if ev.get("ask"):
+            self.ask(ev["ask"])
 
     def meal_moment(self):
         st = self.st
@@ -728,7 +773,12 @@ class Game:
             n = max(0, target - self.st["h"])
         if not n:
             return "现在就该去食堂舱了（%02d:00 的饭点）。没有等。" % stop
-        self.advance(n)
+        for i in range(n):
+            self.advance(1)
+            if self.day_event():
+                if i + 1 < n:
+                    stop, n = None, i + 1
+                break
         msg = "你等了 %d 小时。现在第 %d 天 %02d:00。" % (n, self.st["day"], self.st["h"])
         if stop is not None and n < want:
             msg += ("（%02d:00 是饭点，她会在食堂舱。先停下了，goto mess 正好赶上。）" % stop
@@ -885,6 +935,10 @@ class Game:
         if c.get("reads") and not self.reads_her(5, 0.5):
             return False
         if "mincandor" in c and st["t"]["candor"] < c["mincandor"]:
+            return False
+        if "after" in c and not (c["after"] in st["flags"] and st["flags"][c["after"]] < st["day"]):
+            return False
+        if "optimal" in c and st.get("optimal", 0) < c["optimal"]:
             return False
         return True
 
@@ -1523,6 +1577,7 @@ def cmd(text):
         if res:
             g.say(res)
         g.maybe_start_meal()
+        g.maybe_day_event()
         if (g.st["pending"], g.st["ending"]) != before[:2] and (g.st["pending"] or g.st["ending"]):
             if multi and i < len(cmds) - 1:
                 g.say("（后面的指令先停下了）")

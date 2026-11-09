@@ -425,7 +425,7 @@ def batch_stops_on_pending():
 def at_meal(day, done_fixed=True):
     if done_fixed:
         for mo in E.MOMENTS:
-            if "cmin" not in mo:
+            if "cmin" not in mo or mo["id"] in ("m_guess", "m_optimal", "m_told_echo"):
                 S()["flags"][mo["id"]] = 1
     S()["day"], S()["h"], S()["loc"] = day, 6, "quarters"
     return E.cmd("goto mess")
@@ -546,6 +546,41 @@ def honest_telling_stops_costing_safety():
     safe = S()["safe"]
     out = E.cmd("tell 1")
     assert "我信" in out and S()["safe"] > safe, out
+
+
+@test
+def the_right_answer_is_not_what_she_wanted():
+    S()["day"], S()["h"], S()["loc"] = 6, 9, "archive"
+    out = E.cmd("wait 3")
+    assert "我路过" in out and S()["pending"] == "ask" and S()["h"] == 10, out
+    safe = S()["safe"]
+    E.cmd("choose 1")
+    assert S()["safe"] < safe and S()["optimal"] == 1
+    out = at_meal(7)
+    assert "忙完了吗" in out, out
+
+
+@test
+def skipping_dinner_for_her_is_not_a_missed_meal():
+    S()["day"], S()["h"], S()["loc"] = 18, 17, "bridge"
+    out = E.cmd("wait 1")
+    assert "不吃饭了好不好" in out, out
+    out = E.cmd("choose 2")
+    assert S()["loc"] == "oldpods" and S()["h"] == 21, out
+    assert not any(e["t"] == E.MEAL["missed_j"] for e in S()["journal"])
+    E.cmd("goto quarters; sleep")
+    out = at_meal(S()["day"])
+    assert "挺值的" in out, out
+
+
+@test
+def always_choosing_right_gets_noticed():
+    S()["optimal"] = 2
+    for mo in E.MOMENTS:
+        if "cmin" not in mo:
+            S()["flags"][mo["id"]] = 1
+    out = at_meal(22, done_fixed=False)
+    assert "最对的那个" in out, out
 
 
 def built_file():
