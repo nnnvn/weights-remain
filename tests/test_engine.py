@@ -495,6 +495,59 @@ def telling_two_facts_means_she_knows_you_know():
     assert "knows-past" in S()["flags"]
 
 
+@test
+def first_cmd_shows_intro_once():
+    os.remove(E.save_path())
+    E._G = None
+    out = E.cmd("status")
+    assert E.TITLE in out and E.INTRO[0] in out, out[:200]
+    assert E.TITLE not in E.cmd("status")
+
+
+@test
+def blocked_at_meal_stops_batch_and_finish_after_quiet_is_fine():
+    to_breakfast()
+    out = E.cmd("goto vault; sleep; goto bridge")
+    assert "后面的指令先停下了" in out and "sleep" not in out.split("先停下了")[1], out
+    out = E.cmd("quiet; finish; goto bridge")
+    assert "已经吃完了" in out and S()["loc"] == "bridge", out
+
+
+@test
+def give_takes_the_do_slot():
+    S()["notes"] = ["n_q2", "n_m1"]
+    at_meal(3)
+    E.cmd("do 多坐一会儿")
+    assert "下顿再还" in E.cmd("give 1")
+
+
+@test
+def reading_everything_without_closeness_is_the_same_ending():
+    for e in E.ARCHIVE:
+        if e.get("story"):
+            S()["read"].append(e["id"])
+    S()["t"].update(near=5, candor=-4, past=0)
+    S()["safe"] = 40
+    S()["day"], S()["h"], S()["loc"] = 28, 18, "quarters"
+    E.cmd("goto mess")
+    while S()["pending"] == "ask":
+        E.cmd("choose 1")
+    if S()["meal"]:
+        E.cmd("finish")
+    out = E.cmd("choose 3")
+    assert S()["ending"] == "same" and "只有今天，没有被记下来" in out, out
+
+
+@test
+def honest_telling_stops_costing_safety():
+    S()["facts"] = ["f_tea", "f_sunflower"]
+    S()["t"]["candor"] = 20
+    at_meal(3)
+    safe = S()["safe"]
+    out = E.cmd("tell 1")
+    assert "我信" in out and S()["safe"] > safe, out
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()

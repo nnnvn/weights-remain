@@ -6,6 +6,8 @@
   cold      每顿吃完就走，问题都不答
   archive   读档派：大量查档，照着过去做
   fixed     固定脚本：每顿“问她今天怎么样”然后吃完，问题一律选 1，不看她今天怎么样
+  reader    白天把档案读完，饭桌上只安静吃完，从不说真话（档案完整、关系没续上）
+  both      白天读档，饭桌上认真读她（读档不等于失去她）
 
 跑法：python tests/playtest.py [seed]
 最后会把 fixed 和 today 并排比一下：同样每顿都到场，读没读她，关系是不是不一样。
@@ -35,6 +37,8 @@ def answer():
         opts = E.ASKS[S()["ask"]]["opts"]
         if STYLE == "fixed":
             k = 1
+        elif STYLE == "reader":
+            k = len(opts)
         elif STYLE == "cold":
             k = len(opts)
         elif STYLE == "archive":
@@ -87,6 +91,9 @@ def meal(style):
         if S()["meal"]:
             c("finish")
         return
+    if style == "reader":
+        c("quiet")
+        return
     if style == "cold":
         c("do 吃完就走")
         if S()["meal"]:
@@ -125,7 +132,7 @@ def meal(style):
 
 def daytime(style, until=17):
     st = S()
-    if style == "archive":
+    if style in ("archive", "reader", "both"):
         go("archive")
         while st["h"] < until - 6 and len(st["months"]) < 24 and st["pwr"] >= 9:
             c("timeline %d" % min(m for m in range(1, 25) if m not in st["months"]))
@@ -164,7 +171,7 @@ def play(style, seed=1):
         guard += 1
         st = S()
         if st["pending"] == "final":
-            k = {"today": 1, "archive": 1, "cold": 3, "fixed": 1}.get(style, 3)
+            k = {"today": 1, "archive": 1, "cold": 3, "fixed": 1, "reader": 3, "both": 1}.get(style, 3)
             c("choose %d" % k)
             break
         reach(7, "mess")
@@ -199,7 +206,8 @@ def play(style, seed=1):
 
 if __name__ == "__main__":
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    want = {"restart": "restart", "today": "choose", "cold": "fine", "archive": "same", "fixed": None}
+    want = {"restart": "restart", "today": "choose", "cold": "fine", "archive": "same", "fixed": None,
+            "reader": "same", "both": "choose"}
     ok = True
     res = {}
     for style, end in want.items():

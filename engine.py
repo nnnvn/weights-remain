@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -44,6 +44,7 @@ LIFE_SUPPORT = 35                           # 每晚生命维持耗电
 REACTOR = 35                                # 每天早上反应堆补的电（和生命维持持平：多读档就会冷）
 FAM_BASE, FAM_PER_CYCLE = 25, 11             # 熟悉感上限 = 25 + 11 × 周期
 SEARCH_PWR, TIMELINE_PWR = 10, 3
+TRUST_CANDOR = 8                             # 说真话说到这个程度，她就不再为“过去”紧张
 EXPLORE_STA, MOVE_STA, SEARCH_STA = 12, 2, 3
 
 
@@ -451,7 +452,7 @@ class Game:
 
     def need_meal(self):
         if not self.st["meal"]:
-            return "现在不是吃饭的时候，或者你不在食堂舱。（饭点 07:00、19:00）"
+            return Fail("现在不是吃饭的时候，或者你不在食堂舱。（饭点 07:00、19:00）")
         return None
 
     def her(self, key, d):
@@ -496,13 +497,17 @@ class Game:
             ok = st["safe"] >= 65 and t["near"] >= 30
         else:
             ok = st["safe"] >= 50 and t["near"] >= 30
+        if not ok and self.story_progress() >= 0.8 and t["candor"] <= 0:
+            st["flags"]["same-record"] = st["day"]
+            return "same", k
         return ("choose" if ok else "fine"), k
 
     def finish(self, key, k=None):
         st = self.st
         st["ending"] = key
         st["pending"] = None
-        text = ENDINGS.get("%s%s" % (key, k or ""), ENDINGS.get(key))
+        tk = "samer" if key == "same" and "same-record" in st["flags"] else key
+        text = ENDINGS.get("%s%s" % (tk, k or ""), ENDINGS.get(tk))
         text = text.replace("{progress}", "%.1f%%" % (self.progress() * 100))
         self.say(self.fmt(text))
         if key in ("choose", "fine"):
@@ -514,11 +519,14 @@ class Game:
             after = ENDINGS.get("after_%s%s" % (key, k or ""))
             if after:
                 self.say(self.fmt(after))
-        self.j(ENDINGS["j_" + key], auto=True)
+        self.j(ENDINGS["j_" + tk], auto=True)
+        if key == "choose" and st["t"]["candor"] >= TRUST_CANDOR:
+            self.say(self.fmt(ENDINGS["candor_hi"]))
         mine = [e["t"] for e in st["journal"] if e["me"]][-4:]
         # 她的便签：权重高的（关键线索）优先，其次最近的
-        key_notes = [n for n in st["notes"] if NOTES[n].get("fact")]
-        rest = [n for n in st["notes"] if n not in key_notes]
+        kept = [n for n in st["notes"] if n not in st.get("given", [])]
+        key_notes = [n for n in kept if NOTES[n].get("fact")]
+        rest = [n for n in kept if n not in key_notes]
         hers = [NOTES[n]["text"] for n in (key_notes[-2:] + rest[-1:])][:3]
         if mine or hers:
             self.say("", "—— 留下来的 ——")
@@ -526,7 +534,7 @@ class Game:
                 self.say("【你写下的】")
                 self.say(*["  " + x for x in mine])
             if hers:
-                self.say("【她写下的】")
+                self.say("【她写下的，还在你这里】")
                 for h in hers:
                     self.say(*["  " + x for x in self.fmt(h).splitlines()])
                     self.say("")
@@ -545,15 +553,15 @@ class Game:
             return ""
         c, arg = parts[0].lower(), parts[1:]
         if self.st["ending"] and ALIAS.get(c, c) not in READ_ONLY:
-            return "这段航程已经结束了。（journal、notes、archive 等可以回看；new 重新开始）"
+            return Fail("这段航程已经结束了。（journal、notes、archive 等可以回看；new 重新开始）")
         if self.st["pending"] and c not in ("choose", "status", "journal", "help", "words", "facts", "notes"):
-            return "她在等你回答。（choose <编号>）" if self.st["pending"] == "ask" else "先做决定。（choose <编号>）"
+            return Fail("她在等你回答。（choose <编号>）" if self.st["pending"] == "ask" else "先做决定。（choose <编号>）")
         if self.st["meal"] and ALIAS.get(c, c) not in MEAL_OK:
-            return ("你还在饭桌上。先 finish（吃完）或 quiet（安静吃完），再去做别的。"
-                    "（吃饭时能用：say · tell · do · quiet · finish，以及各种查看）")
+            return Fail("你还在饭桌上。先 finish（吃完）或 quiet（安静吃完），再去做别的。"
+                        "（吃饭时能用：say · tell · do · give · nod · quiet · finish，以及各种查看）")
         fn = getattr(self, "c_" + ALIAS.get(c, c), None)
         if not fn:
-            return "没有这个指令。help 看看。"
+            return Fail("没有这个指令。help 看看。")
         return fn(arg)
 
     # 状态与查看 ─────────────────────────────
@@ -657,7 +665,7 @@ class Game:
             return WORDS[w]["name"] + ("🔍" if hit else "") + ("·聊过" if said else "")
         return ("【你记下的关键词】\n " + "、".join(mark(w) for w in self.st["words"]) +
                 "\n（🔍 = 档案里查得到；·聊过 = 这个周期已经和她聊过）\n"
-                "（search <词> 查档案，6 电 / 1 小时 / 最多 3 条；饭桌上 say <词> 提起）")
+                "（search <词> 查档案，%d 电 / 1 小时 / 最多 3 条；饭桌上 say <词> 提起）" % SEARCH_PWR)
 
     def c_facts(self, arg):
         if not self.st["facts"]:
@@ -875,6 +883,8 @@ class Game:
         if "notes" in c and len(st["notes"]) < c["notes"]:
             return False
         if c.get("reads") and not self.reads_her(5, 0.5):
+            return False
+        if "mincandor" in c and st["t"]["candor"] < c["mincandor"]:
             return False
         return True
 
@@ -1201,7 +1211,7 @@ class Game:
         if not arg:
             return "tell <事>：把你知道的一件事告诉她。facts 看你知道什么。"
         if m["tells"] >= MAX_TELLS:
-            return "一顿饭说一件就够了。"
+            return Fail("一顿饭说一件就够了。")
         q = " ".join(arg)
         fid = self.pick_index(q, st["facts"])
         if fid is False:
@@ -1210,22 +1220,26 @@ class Game:
             fid = self.resolve(q, {k: FACTS[k] for k in st["facts"]})
         if not fid:
             return Fail("你不确定这件事。facts 看你知道什么。")
+        told = st["cyc"].setdefault("told", [])
+        if fid in told:
+            return Fail("这个周期你已经告诉过她这件事了。")
+        told.append(fid)
         st["flags"]["told-" + fid] = st["day"]
         if sum(1 for f in st["flags"] if f.startswith("told-f_")) >= 2:
             st["flags"].setdefault("knows-past", st["day"])
-        told = st["cyc"].setdefault("told", [])
-        if fid in told:
-            return "这个周期你已经告诉过她这件事了。"
-        told.append(fid)
         m["tells"] += 1
         m["acted"] = True
         st["cyc"]["tells"] += 1
         f = FACTS[fid]["tell"]
+        trusted = st["t"]["candor"] >= TRUST_CANDOR
         self.her("fam", f.get("fam", 3))
-        self.her("safe", f.get("safe", -2))
+        self.her("safe", 1 if trusted else f.get("safe", -2))
         self.t("candor", 6)
         self.t("past", 2)
         L = [self.fmt(f["text"])]
+        if trusted and "tell-trusted" not in st["cyc"]:
+            st["cyc"]["tell-trusted"] = True
+            L.append(self.fmt(MEAL["tell_trusted"]))
         if st["cyc"]["tells"] > TELLS_BEFORE_PRESSURE:
             self.her("safe", -6)
             L.append(self.fmt(MEAL["pressure"]))
@@ -1309,7 +1323,10 @@ class Game:
             return Fail("这张已经还给她了。")
         if m.get("gave"):
             return Fail("一顿饭还一张就够了。")
+        if m["dos"] >= MAX_DOS:
+            return Fail("这顿饭已经做过一件事了。还便签也算一件，下顿再还吧。")
         m["gave"] = True
+        m["dos"] += 1
         m["acted"] = True
         given.append(nid)
         L = []
@@ -1326,10 +1343,13 @@ class Game:
             tier = "hi" if st["fam"] >= 60 else ("mid" if st["fam"] >= 30 else "lo")
             back = MEAL["give_back"][tier]
         L.append(self.fmt(back))
-        self.her("fam", 3)
-        self.her("safe", 2)
-        self.t("near", 2)
-        self.t("candor", 2)
+        self.her("fam", 2)
+        self.her("safe", 1)
+        self.t("near", 1)
+        self.t("candor", 3)
+        if len(given) == len(st["notes"]) >= 10 and "gave-all" not in st["flags"]:
+            st["flags"]["gave-all"] = st["day"]
+            L.append(self.fmt(MEAL["give_all"]))
         if len(given) == 1:
             self.j("我把她的一张便签还给了她。", auto=True)
         return "\n".join(L)
@@ -1362,7 +1382,9 @@ class Game:
 
     def c_finish(self, arg):
         if not self.st["meal"]:
-            return "现在没在吃饭。"
+            if {self.slot(), self.slot(self.st["h"] - 1)} & set(self.st["meals_done"]):
+                return "（这顿已经吃完了。）"
+            return Fail("现在没在吃饭。")
         if not self.st["meal"]["acted"]:
             # 什么也没说，只是一起吃完：也是一种陪伴
             self.her("safe", 1)
@@ -1453,6 +1475,7 @@ def _load():
         except Exception:
             shutil.copy(path, path + ".broken")
     _G = Game.fresh()
+    _G.st["intro_pending"] = True
     _G.save()
     return _G
 
@@ -1474,6 +1497,8 @@ def cmd(text):
     """唯一的接口。多条指令用英文分号分隔，一次最多 8 条。"""
     g = _load()
     g.out = []
+    if g.st.pop("intro_pending", False):
+        g.say(TITLE, *INTRO, "")
     allc = []
     for c in text.split(";"):
         if allc and allc[-1].strip().lower().startswith("journal add"):
