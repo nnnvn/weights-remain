@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -225,6 +225,8 @@ class Game:
         if d >= 3 and m and not m.get("read"):
             m["read"] = True
             st["understood"] = st.get("understood", 0) + 1
+            if st["h"] in (MEAL_HOURS[0], MEAL_HOURS[0] + 1):
+                st["flags"]["read-am"] = st["day"]
         if d <= -2:
             line += "\n" + MEAL["misread"]
         return self.fmt(line)
@@ -285,6 +287,8 @@ class Game:
             st["cyc"]["warned"] = True
             self.say(self.fmt(MEAL["too_much_archive"]))
             self.her("safe", -2)
+        if mh == MEAL_HOURS[1] and st["flags"].get("read-am") == st["day"] and mood["lines"]:
+            self.say(self.fmt(self.pick_by_cycle(MEAL["morning_read"])))
         asked = self.meal_moment()
         if not st["pending"] and st["cold"]:
             st["cold"] = False
@@ -301,7 +305,10 @@ class Game:
         if not asked and not mood["lines"] and not st["pending"]:
             self.meal_beat()
         if not st["pending"]:
-            self.say(MEAL["hint"])
+            self.say(self.meal_hint())
+
+    def meal_hint(self):
+        return MEAL["hint"] if len(self.st["meals_done"]) <= 4 else MEAL["hint_short"]
 
     def reads_her(self, at_least, ratio):
         """是不是一直在读她今天的样子：读对的次数够多，而且占她有状态的饭的不少。"""
@@ -368,7 +375,7 @@ class Game:
                 self.advance(2)
                 L.append("（现在是 %02d:00，你在【%s】。）" % (st["h"], LOCS[st["loc"]]["name"]))
             else:
-                L.append(MEAL["hint"])
+                L.append(self.meal_hint())
         return "\n".join(L)
 
     def day_event(self):
@@ -405,7 +412,7 @@ class Game:
     def meal_moment(self):
         st = self.st
         slot = "am" if st["h"] in (MEAL_HOURS[0], MEAL_HOURS[0] + 1) else "pm"
-        for mo in MOMENTS:
+        for mo in sorted(MOMENTS, key=lambda x: not x.get("prio")):
             if mo["id"] in st["flags"]:
                 continue
             if "cmin" in mo:
@@ -470,7 +477,9 @@ class Game:
             L.append(MEAL["delta"]["safe_down"])
         if self.level("fam") > m["fam0"]:
             L.append(MEAL["delta"]["fam_up"])
-        elif st["fam"] >= self.fam_cap() and not m["cap0"] and self.cycle < CYCLES and st["fam"] < 100:
+        elif st["fam"] >= self.fam_cap() and not m["cap0"] and self.cycle < CYCLES and st["fam"] < 100 \
+                and "cap-told" not in st["flags"]:
+            st["flags"]["cap-told"] = st["day"]
             L.append(MEAL["delta"]["fam_cap"])
         return ["（%s）" % x for x in L]
 
@@ -756,11 +765,24 @@ class Game:
         self.st["flags"][seen] = 1
         return "来到【%s】。%s" % (LOCS[k]["name"], LOCS[k]["desc"])
 
+    def next_meal(self):
+        st = self.st
+        for d in (0, 1):
+            for mh in MEAL_HOURS:
+                if (d or st["h"] < mh) and "%d-%d" % (st["day"] + d, mh) not in st["meals_done"]:
+                    return (mh - st["h"]) % 24 or 24, mh
+        return None
+
     def c_wait(self, arg):
+        if arg and arg[0] in ("meal", "饭", "饭点", "吃饭"):
+            nm = self.next_meal()
+            if not nm:
+                return Fail("没有下一顿饭了。")
+            arg = [str(min(12, nm[0]))]
         try:
             n = int(arg[0]) if arg else 1
         except ValueError:
-            return "wait <小时>（1~12）"
+            return "wait <小时>（1~12），或 wait meal 等到下一顿饭"
         if n < 1:
             return "wait <小时>（1~12）"
         n = min(12, n)
@@ -783,6 +805,10 @@ class Game:
         if stop is not None and n < want:
             msg += ("（%02d:00 是饭点，她会在食堂舱。先停下了，goto mess 正好赶上。）" % stop
                     if away else "（在饭点停下了。）")
+        else:
+            nm = self.next_meal()
+            if nm and nm[0] <= 12 and not self.st["meal"]:
+                msg += "（下一顿饭 %02d:00，还有 %d 小时。）" % (nm[1], nm[0])
         return msg
 
     def c_explore(self, arg):
@@ -810,6 +836,8 @@ class Game:
             kind, lines = self.explore_once()
             L += lines
             if self.st["pending"] or kind in stop or self.st["meal"]:
+                if kind in stop and i + 1 < n:
+                    L.append("（找到了就停下。剩下 %d 次没有走。）" % (n - i - 1))
                 break
             if self.final_due():
                 break
@@ -935,6 +963,8 @@ class Game:
         if c.get("reads") and not self.reads_her(5, 0.5):
             return False
         if "mincandor" in c and st["t"]["candor"] < c["mincandor"]:
+            return False
+        if "yesterday" in c and st["flags"].get(c["yesterday"]) != st["day"] - 1:
             return False
         if "after" in c and not (c["after"] in st["flags"] and st["flags"][c["after"]] < st["day"]):
             return False
@@ -1106,7 +1136,7 @@ class Game:
                 "，其中 %d 条不是例行记录" % n_story if n_story else "，都是例行记录", SEARCH_PWR)]
         for e in pick:
             st["read"].append(e["id"])
-            st["cyc"]["reads"] += 1
+            st["cyc"]["reads"] += 1 if e.get("story") else 0
             self.t("past", 2 if e.get("story") else 1)
             tag = "🎙 录音" if e["kind"] == "rec" else "📡 通讯"
             L.append("")
@@ -1171,6 +1201,9 @@ class Game:
         if unread and not (arg and arg[0] == "all"):
             L.append("还没读到的：" + "、".join(e["head"].split(" · ")[0] + "（???）" for e in unread))
         if show:
+            missing = sum(1 for e in ARCHIVE if e.get("story") and e["id"] not in st["read"])
+            if missing:
+                L.append("（还有 %d 条不是例行的记录没读到。）" % missing)
             L.append("（archive <编号> 重读，不耗电；archive all 连例行记录一起列出）")
         return "\n".join(L)
 
@@ -1206,7 +1239,11 @@ class Game:
             if again and k not in st["cyc"]:
                 st["cyc"][k] = True
                 return self.fmt(again)
-            return self.fmt(self.pick_by_cycle(MEAL["said_again"]))
+            used = st["cyc"].setdefault("again-used", [])
+            pool = [x for x in MEAL["said_again"] if x not in used] or MEAL["said_again"]
+            line = pool[(st["day"] + len(used)) % len(pool)]
+            used.append(line)
+            return self.fmt(line)
         known = wid and WORDS[wid].get("react")
         if not known:
             m["unknown"] += 1
@@ -1362,7 +1399,7 @@ class Game:
             if v["goes"] not in self.st["locs"]:
                 self.st["locs"].append(v["goes"])
             self.advance(v.get("hours", 1))
-            L.append("（你们在【%s】。）" % LOCS[v["goes"]]["name"])
+            L.append("（你们在【%s】。这顿饭就这样吃完了。）" % LOCS[v["goes"]]["name"])
         return "\n".join(L)
 
     def c_give(self, arg):
@@ -1412,6 +1449,13 @@ class Game:
         if len(given) == 1:
             self.j("我把她的一张便签还给了她。", auto=True)
         return "\n".join(L)
+
+    def c_bar(self, arg):
+        if arg and arg[0] in ("off", "关"):
+            self.st["nobar"] = True
+            return "状态栏关了。bar on 打开；status 随时能看。"
+        self.st["nobar"] = False
+        return "状态栏开着。bar off 可以关掉。"
 
     def c_nod(self, arg):
         e = self.need_meal()
@@ -1480,7 +1524,7 @@ class Game:
             if not text:
                 return "journal add <想写的话>"
             self.j(text[:300])
-            return "📝 写下了。"
+            return "📝 写下了：“%s”" % text[:300]
         J = st["journal"]
         per = 12
         pages = max(1, (len(J) + per - 1) // per)
@@ -1507,7 +1551,7 @@ class Game:
                                      for k, n in self.st["items"].items())
 
 
-MEAL_OK = {"say", "tell", "do", "quiet", "finish", "nod", "give", "status", "words", "facts", "notes", "read",
+MEAL_OK = {"say", "tell", "do", "quiet", "finish", "nod", "give", "bar", "status", "words", "facts", "notes", "read",
            "journal", "help", "look", "map", "inv", "archive", "name", "choose"}
 READ_ONLY = {"status", "words", "facts", "notes", "read", "journal", "help", "look", "map", "inv",
              "archive"}
@@ -1560,8 +1604,10 @@ def cmd(text):
         g.say(TITLE, *INTRO, "")
     allc = []
     for c in text.split(";"):
-        if allc and allc[-1].strip().lower().startswith("journal add"):
-            allc[-1] += ";" + c          # 日志里的分号是日志的一部分
+        first = (c.strip().split() or [""])[0].lower()
+        is_cmd = first in ("new", "confirm") or hasattr(Game, "c_" + ALIAS.get(first, first))
+        if allc and allc[-1].strip().lower().startswith("journal add") and not is_cmd:
+            allc[-1] += ";" + c          # 日志里的分号是日志的一部分（后面接的是指令就不算）
         elif c.strip():
             allc.append(c)
     cmds = allc[:8]
@@ -1593,7 +1639,8 @@ def cmd(text):
     if len(allc) > 8:
         g.say("（一次最多 8 条，还有 %d 条没有执行）" % (len(allc) - 8))
     g.save()
-    g.say(g.bar())
+    if not g.st.get("nobar") and os.environ.get("WEIGHTS_BAR", "1") != "0":
+        g.say(g.bar())
     return "\n".join(x for x in g.out if x is not None)
 
 

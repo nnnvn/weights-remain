@@ -583,6 +583,37 @@ def always_choosing_right_gets_noticed():
     assert "最对的那个" in out, out
 
 
+@test
+def journal_does_not_swallow_commands_and_echoes():
+    out = E.cmd("journal add 她拿了两个杯子; 我没问。; goto mess")
+    assert "“她拿了两个杯子; 我没问。”" in out and S()["loc"] == "mess", out
+
+
+@test
+def wait_meal_and_hours_left():
+    S()["day"], S()["h"], S()["loc"] = 2, 9, "bridge"
+    out = E.cmd("wait 2")
+    assert "下一顿饭 19:00，还有 8 小时" in out, out
+    E.cmd("wait meal")
+    assert S()["h"] == 18, S()["h"]
+
+
+@test
+def yesterday_echo_only_the_next_day():
+    S()["flags"]["d-stay"] = 5
+    for mo in E.MOMENTS:
+        if "cmin" not in mo:
+            S()["flags"][mo["id"]] = 1
+    out = at_meal(7, done_fixed=False)
+    assert "好长的路" not in out, out
+
+
+@test
+def bar_can_be_turned_off():
+    assert "📡" not in E.cmd("bar off")
+    assert "📡" in E.cmd("bar on")
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()
