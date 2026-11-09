@@ -184,7 +184,11 @@ def play(style, seed=1):
         c("sleep")
     st = S()
     text = "\n".join(LOG)
-    seen = {line for m in E.MOODS.values() for _, line in m["acts"].values() if line in text}
+    lines = []
+    for m in E.MOODS.values():
+        for _, line in m["acts"].values():
+            lines += line if isinstance(line, list) else [line]
+    seen = {line for line in lines if line in text}
     ending_tail = [l for l in text.splitlines() if "她又补了一句" in l or "谢谢你每天都来" in l]
     return {"style": style, "ending": st["ending"], "day": st["day"],
             "story": sum(1 for e in E.ARCHIVE if e.get("story") and e["id"] in st["read"]),

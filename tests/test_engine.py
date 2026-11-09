@@ -232,6 +232,82 @@ def small_input_checks():
 
 
 @test
+def partial_act_name_and_failed_do_stops_batch():
+    S()["flags"]["notea-seen"] = 1
+    to_breakfast()
+    out = E.cmd("do 倒杯温水")
+    assert "温水" in out and S()["meal"]["dos"] == 1, out
+    E.cmd("finish")
+    S()["h"], S()["loc"] = 19, "mess"
+    out = E.cmd("status; do 不存在的事; finish")
+    assert "没做成" in out and S()["meal"], out
+
+
+@test
+def going_somewhere_moves_you():
+    S()["facts"], S()["items"] = ["f_window"], {"suit": 1}
+    S()["locs"].append("oldpods")
+    to_breakfast()
+    out = E.cmd("do 约她去观察窗坐坐")
+    assert S()["meal"] is None and S()["loc"] == "oldpods" and S()["h"] == 8, out
+
+
+@test
+def later_lines_remember_what_happened():
+    S()["flags"]["did-a_sunflower"] = 3
+    S()["day"], S()["h"], S()["loc"] = 18, 5, "quarters"
+    E.cmd("wait 1")
+    out = E.cmd("goto mess")
+    while S()["pending"]:
+        E.cmd("choose 1")
+    assert "你跟我说过，是给你的" in out, out
+    S()["flags"]["said-stay"] = 1
+    S()["day"], S()["h"], S()["loc"], S()["meal"] = 24, 19, "mess", None
+    S()["fam"] = 90
+    E.cmd("status")
+    while S()["pending"]:
+        E.cmd("choose 1")
+    out = E.cmd("say 抵达")
+    assert "你说过你不想走" in out, out
+
+
+@test
+def misread_has_a_felt_cue_and_nod_is_free():
+    to_breakfast()
+    S()["mood"] = "quiet"
+    out = E.cmd("do 问她今天怎么样")
+    assert "顿了一下" in out, out
+    out = E.cmd("嗯")
+    assert S()["meal"]["says"] == 0 and "你" in out
+    assert "已经应过" in E.cmd("nod")
+
+
+@test
+def note_pity_after_two_dry_explores():
+    S()["flags"]["dry-mess"] = 2
+    S()["h"], S()["loc"] = 9, "mess"
+    out = E.cmd("explore")
+    assert "便签" in out, out
+
+
+@test
+def ending_has_a_summary_line():
+    S()["day"], S()["h"], S()["loc"] = 28, 19, "mess"
+    S()["safe"], S()["t"]["near"] = 80, 50
+    E.cmd("status")
+    out = E.cmd("choose 1")
+    assert "这一局：一起吃了" in out and "型号的安排没有变" in out, out
+
+
+@test
+def cli_cmd_entry():
+    import subprocess, sys as _s
+    out = subprocess.run([_s.executable, os.path.join(ROOT, "weights.py"), "cmd", "status"],
+                         capture_output=True, text=True, env=dict(os.environ)).stdout
+    assert "【状态】" in out, out
+
+
+@test
 def batch_truncation_is_reported():
     out = E.cmd(";".join(["status"] * 10))
     assert "还有 2 条没有执行" in out
