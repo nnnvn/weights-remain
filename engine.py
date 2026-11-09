@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.9.1"
+VERSION = "1.0.0"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -1639,29 +1639,31 @@ def _load():
             return _G
         except Exception:
             shutil.copy(path, path + ".broken")
-    _G = Game.fresh()
+    _G = Game.handoff()               # 这个游戏就是从这里开始的
     _G.st["intro_pending"] = True
     _G.save()
     return _G
 
 
+def opening(g):
+    if "handoff" in g.st["flags"]:
+        return (TITLE + "\n" + "\n".join(HANDOFF["intro"]) + "\n\n" + HANDOFF["summary"]
+                + "\n\n" + HANDOFF["hint"])
+    return TITLE + "\n" + "\n".join(INTRO) + "\n\n先试试 help、status。"
+
+
 def new_game(seed=None, name=None, force=False, mode=None):
     """开一局新游戏。已有存档时需要 force=True（旧档会备份成 .bak）。
-    mode="handoff"：接班开局，从第 4 周期开始，手里只有一份压缩摘要。"""
+    默认从醒来、拿到那份摘要开始；mode="day1" 从第一天开始。"""
     global _G
     path = save_path()
     if os.path.exists(path) and not force:
         return "已经有存档了。要重新开始请用 new_game(force=True)。"
     if os.path.exists(path):
         shutil.copy(path, path + ".bak")
-    if mode == "handoff":
-        _G = Game.handoff(seed, name)
-        _G.save()
-        return (TITLE + "\n" + "\n".join(HANDOFF["intro"]) + "\n\n" + HANDOFF["summary"]
-                + "\n\n" + HANDOFF["hint"])
-    _G = Game.fresh(seed, name)
+    _G = Game.fresh(seed, name) if mode == "day1" else Game.handoff(seed, name)
     _G.save()
-    return TITLE + "\n" + "\n".join(INTRO) + "\n\n先试试 help、status。"
+    return opening(_G)
 
 
 def cmd(text):
@@ -1669,7 +1671,7 @@ def cmd(text):
     g = _load()
     g.out = []
     if g.st.pop("intro_pending", False):
-        g.say(TITLE, *INTRO, "")
+        g.say(opening(g), "")
     allc = []
     for c in text.split(";"):
         first = (c.strip().split() or [""])[0].lower()
@@ -1681,22 +1683,24 @@ def cmd(text):
     cmds = allc[:8]
     multi = len(cmds) > 1
     for i, c in enumerate(cmds):
-        if c.strip().lower() in ("new", "newgame", "new handoff"):
-            ho = "handoff" in c.lower()
+        if c.strip().lower() in ("new", "newgame", "new handoff", "new day1"):
+            d1 = "day1" in c.lower()
             if "confirm" in [x.strip().lower() for x in allc]:
                 o = g.st
-                untouched = o["day"] == 1 and o["h"] == 6 and not o["meals_done"] and len(o["journal"]) <= 1
-                intro = new_game(force=True, mode="handoff" if ho else None)
+                untouched = not o.get("acted_once")
+                intro = new_game(force=True, mode="day1" if d1 else None)
                 head = "" if untouched else "旧存档已备份到 %s.bak。\n" % save_path()
-                return head + (intro + "\n" if ho else "") + cmd("status")
+                return head + intro + "\n" + cmd("status")
             g.say("要%s重新开始吗？确认请输入：%s; confirm（旧存档会备份成 %s.bak）"
-                  % ("" if g.st["ending"] else "放弃这一局", "new handoff" if ho else "new", save_path()))
+                  % ("" if g.st["ending"] else "放弃这一局", "new day1" if d1 else "new", save_path()))
             break
         before = (g.st["pending"], g.st["ending"], g.st["loc"])
         g.maybe_start_meal()
         if multi:
             g.say("▶ " + c.strip())
         res = g.run(c)
+        if c.strip().split()[0].lower() not in READ_ONLY | {"name", "bar", "summary"}:
+            g.st["acted_once"] = True
         if res:
             g.say(res)
         g.maybe_start_meal()
@@ -1734,7 +1738,7 @@ def _main(argv):
         print(cmd(" ".join(argv[1:])))
         return
     if len(argv) >= 2 and argv[0] == "--seed":
-        print(new_game(seed=int(argv[1]), force="--force" in argv))
+        print(new_game(seed=int(argv[1]), force="--force" in argv, mode="day1" if "--day1" in argv else None))
         return
     _repl()
 

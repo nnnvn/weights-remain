@@ -165,7 +165,7 @@ def play(style, seed=1):
     global STYLE
     STYLE = style
     LOG.clear()
-    E.new_game(seed=seed, name="测试员", force=True)
+    E.new_game(seed=seed, name="测试员", force=True, mode="day1")
     c("status")
     guard = 0
     while not S()["ending"] and guard < 2000:

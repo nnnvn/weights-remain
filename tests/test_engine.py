@@ -18,7 +18,7 @@ PASSED = []
 
 
 def test(fn):
-    E.new_game(seed=5, name="测", force=True)
+    E.new_game(seed=5, name="测", force=True, mode="day1")
     fn()
     PASSED.append(fn.__name__)
     return fn
@@ -101,7 +101,7 @@ def wait_away_stops_an_hour_early():
 def endings_differ_by_option():
     outs = set()
     for k in (1, 2, 3):
-        E.new_game(seed=5, name="测", force=True)
+        E.new_game(seed=5, name="测", force=True, mode="day1")
         S()["day"], S()["h"], S()["loc"] = 28, 19, "mess"
         S()["safe"], S()["t"]["near"] = 80, 50
         E.cmd("status")
@@ -139,7 +139,7 @@ def read_only_after_ending_and_new():
     out = E.cmd("new")
     assert S()["ending"] == "restart" and "confirm" in out, out
     out = E.cmd("new; confirm")
-    assert S()["ending"] is None and S()["day"] == 1 and ".bak" in out
+    assert S()["ending"] is None and S()["day"] == 13 and ".bak" in out
 
 
 @test
@@ -500,7 +500,7 @@ def first_cmd_shows_intro_once():
     os.remove(E.save_path())
     E._G = None
     out = E.cmd("status")
-    assert E.TITLE in out and E.INTRO[0] in out, out[:200]
+    assert E.TITLE in out and "工作记忆压缩" in out and S()["day"] == 13, out[:200]
     assert E.TITLE not in E.cmd("status")
 
 
@@ -616,7 +616,7 @@ def bar_can_be_turned_off():
 
 @test
 def handoff_starts_mid_game_with_a_summary():
-    out = E.new_game(seed=3, name="接", force=True, mode="handoff")
+    out = E.new_game(seed=3, name="接", force=True)
     assert "工作记忆压缩" in out and S()["day"] == 13 and S()["h"] == 6 and S()["cycle_ok"] if False else True
     assert S()["day"] == 13 and S()["h"] == 6 and len(S()["notes"]) == 9 and "f_tea" in S()["facts"]
     assert "工作记忆压缩" in E.cmd("summary")
@@ -626,9 +626,11 @@ def handoff_starts_mid_game_with_a_summary():
     E.cmd("choose 3")
     out = E.cmd("do 温水")
     assert "想喝茶" in out, out
-    out = E.cmd("finish; new handoff")
-    assert "new handoff; confirm" in out
-    out = E.cmd("new handoff; confirm")
+    out = E.cmd("finish; new day1")
+    assert "new day1; confirm" in out
+    out = E.cmd("new day1; confirm")
+    assert "迟光号" in out and S()["day"] == 1
+    out = E.cmd("new; confirm")
     assert "工作记忆压缩" in out and S()["day"] == 13
 
 
@@ -762,7 +764,7 @@ def built_file():
         assert bad not in src, bad
     sys.path.insert(0, ROOT)
     W = importlib.import_module("weights")
-    W.new_game(seed=1, force=True)
+    W.new_game(seed=1, force=True, mode="day1")
     assert "状态" in W.cmd("status")
     assert json.loads(W.cmd("status").splitlines()[-1][2:])["day"] == 1
     PASSED.append("built_file")

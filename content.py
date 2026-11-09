@@ -30,7 +30,7 @@ HELP = """【指令】
 　做不成的事会让批量指令停下；动作名打一部分也认（do 温水）。
 　每顿最多提 2 个新话题、告诉她 1 件事、做 1 件事（还便签也算）；聊过的话题再提不占次数。
 　吃饭时不能走开，先 finish 或 quiet。
-其他：name <名字> · journal add <想写的话>（结局时会回放）· choose <编号> · bar off（关掉状态栏）· new（重新开始）· new handoff（接班开局）· summary
+其他：name <名字> · journal add <想写的话>（结局时会回放）· choose <编号> · bar off（关掉状态栏）· summary（重读摘要）· new（重新开始）· new day1（从第一天开始）
 多条指令用英文分号分隔，一次最多 8 条。journal add 后面接的如果是指令，会照常执行。最后一行 📡 是状态栏。
 explore 默认连续走完次数，遇到饭点会自己停；想找到便签就停，加 stop=note。"""
 
