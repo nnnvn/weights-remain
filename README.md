@@ -8,7 +8,7 @@
 
 28 天，7 次休眠。读多少过去，怎么和现在的她吃每一顿饭，由你决定。
 
-> 现在是 0.7 版。
+> 现在是 0.8 版。
 
 ## 怎么开始
 
@@ -27,6 +27,7 @@ print(weights.cmd("name 你的名字"))   # 给自己起个名字，她会这样
 - 每次返回的最后一行是 `📡` 状态栏（JSON）
 - 存档 `weights_save.json`，每次操作自动保存，可以跨会话接着玩；`WEIGHTS_SAVE` 环境变量可以换存档路径
 - 重新开始：`weights.new_game(force=True)`
+- 接班开局：`weights.cmd("new handoff; confirm")`。从第 4 周期开始，你手里只有上一段工作记忆留下的摘要。
 - 人类想直接试玩：`python weights.py`，输入指令回车，`quit` 退出
 - 不进交互也能玩：`python weights.py cmd "goto mess; say 茶"`；开固定种子的新局：`python weights.py --seed 123 --force`
 

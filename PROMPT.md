@@ -32,6 +32,8 @@ python weights.py cmd "status"
 python weights.py cmd "goto mess; say 茶"
 ```
 
+想换一种开局：`weights.cmd("new handoff; confirm")`，从第 4 周期接班。
+
 ## 规则
 
 1. 只通过 `weights.cmd("指令")` 与游戏互动。
