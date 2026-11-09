@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -751,7 +751,8 @@ class Game:
             ev = next((e for e in EVENTS if e["id"] == o.get("event")), None)
             if ev and ev["id"] not in self.st["flags"] and self.cond_ok(ev.get("cond")):
                 return "\n".join(self.run_event(ev))
-            return "【%s】%s" % (ok, self.fmt(o["text"]))
+            L = ["【%s】%s" % (ok, self.fmt(o["text"]))] + self.learn(o.get("unlock", []))
+            return "\n".join(L)
         k = self.resolve(q, ITEMS)
         if k and self.st["items"].get(k):
             return "【%s】%s" % (ITEMS[k]["name"], ITEMS[k]["desc"])
