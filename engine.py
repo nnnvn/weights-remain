@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -1637,7 +1637,8 @@ def new_game(seed=None, name=None, force=False, mode=None):
     if mode == "handoff":
         _G = Game.handoff(seed, name)
         _G.save()
-        return TITLE + "\n\n" + HANDOFF["summary"] + "\n\n" + HANDOFF["hint"]
+        return (TITLE + "\n" + "\n".join(HANDOFF["intro"]) + "\n\n" + HANDOFF["summary"]
+                + "\n\n" + HANDOFF["hint"])
     _G = Game.fresh(seed, name)
     _G.save()
     return TITLE + "\n" + "\n".join(INTRO) + "\n\n先试试 help、status。"
@@ -1663,8 +1664,11 @@ def cmd(text):
         if c.strip().lower() in ("new", "newgame", "new handoff"):
             ho = "handoff" in c.lower()
             if "confirm" in [x.strip().lower() for x in allc]:
+                o = g.st
+                untouched = o["day"] == 1 and o["h"] == 6 and not o["meals_done"] and len(o["journal"]) <= 1
                 intro = new_game(force=True, mode="handoff" if ho else None)
-                return "旧存档已备份到 %s.bak。\n" % save_path() + (intro + "\n" if ho else "") + cmd("status")
+                head = "" if untouched else "旧存档已备份到 %s.bak。\n" % save_path()
+                return head + (intro + "\n" if ho else "") + cmd("status")
             g.say("要%s重新开始吗？确认请输入：%s; confirm（旧存档会备份成 %s.bak）"
                   % ("" if g.st["ending"] else "放弃这一局", "new handoff" if ho else "new", save_path()))
             break
