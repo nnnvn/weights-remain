@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -1201,6 +1201,11 @@ class Game:
         if wid and WORDS[wid].get("react") and wid in st["cyc"]["reacted"] and wid != "restart":
             # 这个周期聊过的话题：给一句短回应，不占次数，也不加数值
             m["acted"] = True
+            again = WORDS[wid].get("again")
+            k = "again-" + wid
+            if again and k not in st["cyc"]:
+                st["cyc"][k] = True
+                return self.fmt(again)
             return self.fmt(self.pick_by_cycle(MEAL["said_again"]))
         known = wid and WORDS[wid].get("react")
         if not known:
