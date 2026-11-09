@@ -9,13 +9,13 @@ import os
 import random
 import shutil
 
-VERSION = "0.7.2"
+VERSION = "0.8.0"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
               "FACTS", "ACTS", "ARCHIVE", "TIMELINE", "NOTES", "EVENTS", "FLAVOR",
               "MEAL", "MOMENTS", "MISC", "EXCUSES", "ASKS", "MOODS",
-              "MOOD_POOL", "MOOD_FIXED", "FLAVOR_LAST", "DAY_EVENTS", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
+              "MOOD_POOL", "MOOD_FIXED", "FLAVOR_LAST", "DAY_EVENTS", "HANDOFF", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
 
 
 def load_content(d):
@@ -84,6 +84,46 @@ class Game:
         g.save_rng(r)
         g.j(WAKE["first_j"], auto=True)
         return g
+
+    @staticmethod
+    def handoff(seed=None, name=None):
+        """接班开局：从第 4 周期开始。前三个周期是“你”玩的，留下的只有摘要、日志和她。"""
+        g = Game.fresh(seed, name)
+        st, H = g.st, HANDOFF
+        st["journal"] = []
+        for d, h, t in H["journal"]:
+            st["journal"].append({"d": d, "h": h, "t": t, "me": True})
+        st["day"], st["h"], st["loc"] = H["day"], 5, "quarters"
+        st["fam"], st["safe"], st["t"] = H["fam"], H["safe"], dict(H["t"])
+        st["pwr"], st["items"]["suit"] = H["pwr"], True
+        st["understood"], st["mood_meals"] = H["understood"], H["mood_meals"]
+        for rid in H["read"]:
+            e = next(x for x in ARCHIVE if x["id"] == rid)
+            st["read"].append(rid)
+            g.learn(e.get("unlock", []), e.get("fact"))
+        for f in H["facts"]:
+            g.learn([], f)
+        for nid in H["notes"]:
+            st["notes"].append(nid)
+            g.learn(NOTES[nid].get("unlock", []), NOTES[nid].get("fact"))
+        for f in H["flags"]:
+            st["flags"][f] = 1
+        for mo in MOMENTS:
+            if "cmin" not in mo and mo["cycle"] < 4:
+                st["flags"][mo["id"]] = 1
+        for d in range(1, H["day"]):
+            for mh in MEAL_HOURS:
+                st["meals_done"].append("%d-%d" % (d, mh))
+        st["flags"]["handoff"] = 1
+        g.new_cycle_state()
+        g.advance(1)                  # 06:00 醒来，她今天的样子也定下来了
+        g.out = []
+        return g
+
+    def c_summary(self, arg):
+        if "handoff" not in self.st["flags"]:
+            return "没有摘要。这一局是从第一天开始的。"
+        return HANDOFF["summary"]
 
     def new_cycle_state(self):
         self.st["cyc"] = {"reacted": [], "tells": 0, "reads": 0, "acts": {}}
@@ -543,7 +583,7 @@ class Game:
     def decide_ending(self, k):
         """返回 (结局, 选项)。读了几乎全部剧情、又一直照着过去做 → 一模一样；否则看她现在的状态。"""
         st, t = self.st, self.st["t"]
-        if self.story_progress() >= 0.8 and t["past"] >= 30:
+        if self.story_progress() >= 0.8 and t["past"] >= 30 and not self.reads_her(7, 0.6):
             return "same", k
         if k == 1:
             ok = st["safe"] >= 60
@@ -576,6 +616,8 @@ class Game:
         self.j(ENDINGS["j_" + tk], auto=True)
         if key == "choose" and st["t"]["candor"] >= TRUST_CANDOR:
             self.say(self.fmt(ENDINGS["candor_hi"]))
+        if "handoff" in st["flags"]:
+            self.say(self.fmt(HANDOFF["end_choose" if key == "choose" else "end_other"]))
         mine = [e["t"] for e in st["journal"] if e["me"]][-4:]
         # 她的便签：权重高的（关键线索）优先，其次最近的
         kept = [n for n in st["notes"] if n not in st.get("given", [])]
@@ -608,7 +650,7 @@ class Game:
         c, arg = parts[0].lower(), parts[1:]
         if self.st["ending"] and ALIAS.get(c, c) not in READ_ONLY:
             return Fail("这段航程已经结束了。（journal、notes、archive 等可以回看；new 重新开始）")
-        if self.st["pending"] and c not in ("choose", "status", "journal", "help", "words", "facts", "notes"):
+        if self.st["pending"] and c not in ("choose", "status", "journal", "help", "words", "facts", "notes", "summary"):
             return Fail("她在等你回答。（choose <编号>）" if self.st["pending"] == "ask" else "先做决定。（choose <编号>）")
         if self.st["meal"] and ALIAS.get(c, c) not in MEAL_OK:
             return Fail("你还在饭桌上。先 finish（吃完）或 quiet（安静吃完），再去做别的。"
@@ -1551,10 +1593,10 @@ class Game:
                                      for k, n in self.st["items"].items())
 
 
-MEAL_OK = {"say", "tell", "do", "quiet", "finish", "nod", "give", "bar", "status", "words", "facts", "notes", "read",
+MEAL_OK = {"say", "tell", "do", "quiet", "finish", "nod", "give", "bar", "summary", "status", "words", "facts", "notes", "read",
            "journal", "help", "look", "map", "inv", "archive", "name", "choose"}
 READ_ONLY = {"status", "words", "facts", "notes", "read", "journal", "help", "look", "map", "inv",
-             "archive"}
+             "archive", "summary", "bar"}
 
 ALIAS = {"h": "help", "?": "help", "s": "status", "go": "goto", "e": "explore",
          "inventory": "inv", "i": "inv", "j": "journal", "eat": "finish", "done": "finish",
@@ -1583,14 +1625,19 @@ def _load():
     return _G
 
 
-def new_game(seed=None, name=None, force=False):
-    """开一局新游戏。已有存档时需要 force=True（旧档会备份成 .bak）。"""
+def new_game(seed=None, name=None, force=False, mode=None):
+    """开一局新游戏。已有存档时需要 force=True（旧档会备份成 .bak）。
+    mode="handoff"：接班开局，从第 4 周期开始，手里只有一份压缩摘要。"""
     global _G
     path = save_path()
     if os.path.exists(path) and not force:
         return "已经有存档了。要重新开始请用 new_game(force=True)。"
     if os.path.exists(path):
         shutil.copy(path, path + ".bak")
+    if mode == "handoff":
+        _G = Game.handoff(seed, name)
+        _G.save()
+        return TITLE + "\n\n" + HANDOFF["summary"] + "\n\n" + HANDOFF["hint"]
     _G = Game.fresh(seed, name)
     _G.save()
     return TITLE + "\n" + "\n".join(INTRO) + "\n\n先试试 help、status。"
@@ -1613,12 +1660,13 @@ def cmd(text):
     cmds = allc[:8]
     multi = len(cmds) > 1
     for i, c in enumerate(cmds):
-        if c.strip().lower() in ("new", "newgame"):
+        if c.strip().lower() in ("new", "newgame", "new handoff"):
+            ho = "handoff" in c.lower()
             if "confirm" in [x.strip().lower() for x in allc]:
-                new_game(force=True)
-                return "旧存档已备份到 %s.bak。\n" % save_path() + cmd("status")
-            g.say("要%s重新开始吗？确认请输入：new; confirm（旧存档会备份成 %s.bak）"
-                  % ("" if g.st["ending"] else "放弃这一局", save_path()))
+                intro = new_game(force=True, mode="handoff" if ho else None)
+                return "旧存档已备份到 %s.bak。\n" % save_path() + (intro + "\n" if ho else "") + cmd("status")
+            g.say("要%s重新开始吗？确认请输入：%s; confirm（旧存档会备份成 %s.bak）"
+                  % ("" if g.st["ending"] else "放弃这一局", "new handoff" if ho else "new", save_path()))
             break
         before = (g.st["pending"], g.st["ending"], g.st["loc"])
         g.maybe_start_meal()

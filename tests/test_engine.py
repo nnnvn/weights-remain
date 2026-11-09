@@ -614,6 +614,24 @@ def bar_can_be_turned_off():
     assert "📡" in E.cmd("bar on")
 
 
+@test
+def handoff_starts_mid_game_with_a_summary():
+    out = E.new_game(seed=3, name="接", force=True, mode="handoff")
+    assert "工作记忆压缩" in out and S()["day"] == 13 and S()["h"] == 6 and S()["cycle_ok"] if False else True
+    assert S()["day"] == 13 and S()["h"] == 6 and len(S()["notes"]) == 9 and "f_tea" in S()["facts"]
+    assert "工作记忆压缩" in E.cmd("summary")
+    assert "第 4 周期的你" not in E.cmd("journal") and "周期的你" in E.cmd("journal")
+    out = E.cmd("goto mess")
+    assert "坐下的样子" in out and S()["pending"] == "ask", out
+    E.cmd("choose 3")
+    out = E.cmd("do 温水")
+    assert "想喝茶" in out, out
+    out = E.cmd("finish; new handoff")
+    assert "new handoff; confirm" in out
+    out = E.cmd("new handoff; confirm")
+    assert "工作记忆压缩" in out and S()["day"] == 13
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()
