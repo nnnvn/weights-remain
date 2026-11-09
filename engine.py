@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.8.1"
+VERSION = "0.9.0"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -394,7 +394,7 @@ class Game:
                 st["meals_done"].append(key)
         if o.get("j"):
             self.j(o["j"], auto=True)
-        L = [self.fmt(o["r"])]
+        L = [self.fmt(o.get("r_grief") if o.get("r_grief") and "knows-grief" in st["flags"] else o["r"])]
         if not st["meal"] and (o.get("loc") or o.get("hours")):
             if o.get("loc"):
                 st["loc"] = o["loc"]
@@ -572,9 +572,15 @@ class Game:
         st["meal"] = None
         st["pending"] = "final"
         self.say(self.fmt(FINAL["text"]))
-        for i, o in enumerate(FINAL["opts"], 1):
+        for i, o in enumerate(self.final_opts(), 1):
             self.say("  %d. %s" % (i, o))
         self.say("（用 choose <编号> 做决定）")
+
+    def final_opts(self):
+        opts = list(FINAL["opts"])
+        if "knows-grief" in self.st["flags"] and len(self.st.get("given", [])) >= 5:
+            opts.append(FINAL["keep"])
+        return opts
 
     def story_progress(self):
         story = [e for e in ARCHIVE if e.get("story")]
@@ -583,6 +589,8 @@ class Game:
     def decide_ending(self, k):
         """返回 (结局, 选项)。读了几乎全部剧情、又一直照着过去做 → 一模一样；否则看她现在的状态。"""
         st, t = self.st, self.st["t"]
+        if k == 4:
+            return "keep", None
         if self.story_progress() >= 0.8 and t["past"] >= 30 and not self.reads_her(7, 0.6):
             return "same", k
         if k == 1:
@@ -1006,6 +1014,8 @@ class Game:
             return False
         if "mincandor" in c and st["t"]["candor"] < c["mincandor"]:
             return False
+        if "cday" in c and self.cday != c["cday"]:
+            return False
         if "yesterday" in c and st["flags"].get(c["yesterday"]) != st["day"] - 1:
             return False
         if "after" in c and not (c["after"] in st["flags"] and st["flags"][c["after"]] < st["day"]):
@@ -1148,7 +1158,8 @@ class Game:
             return "电力不够，档案终端开不起来。"
         q = " ".join(arg).strip().lower()
         wid = self.resolve(q, WORDS)
-        match = [e for e in ARCHIVE if q in e["kw"] or (wid and wid in e["kw"])]
+        match = [e for e in ARCHIVE if (q in e["kw"] or (wid and wid in e["kw"]))
+                 and (not e.get("after") or e["after"] in st["read"])]
         if match and all(e["id"] in st["read"] for e in match):
             return "检索“%s”：相关的 %d 条记录你都读过了。（没有消耗电力）" % (" ".join(arg), len(match))
         if not match:
@@ -1162,17 +1173,18 @@ class Game:
         self.advance(1)
         dark = st["pwr"] <= 0 or st["cold"]
         hits = [e for e in ARCHIVE if e["id"] not in st["read"] and
-                (q in e["kw"] or (wid and wid in e["kw"]))]
+                (q in e["kw"] or (wid and wid in e["kw"])) and (not e.get("after") or e["after"] in st["read"])]
         if not hits:
             seen = any(q in e["kw"] or (wid and wid in e["kw"]) for e in ARCHIVE)
             return "检索“%s”：%s" % (" ".join(arg), "相关记录都读过了。" if seen else "没有结果。")
         r = self.rng()
         story = [e for e in hits if e.get("story")]
-        filler = [e for e in hits if not e.get("story")]
+        hidden = [e for e in hits if e.get("hidden")]
+        filler = [e for e in hits if not e.get("story") and not e.get("hidden")]
         r.shuffle(filler)
-        pick = (story + filler)[:3]
+        pick = (story + hidden + filler)[:3]
         self.save_rng(r)
-        n_story = sum(1 for e in pick if e.get("story"))
+        n_story = sum(1 for e in pick if e.get("story") or e.get("hidden"))
         L = ["检索“%s”：%d 条未读，显示 %d 条%s。（电力 -%d，1 小时）"
              % (" ".join(arg), len(hits), len(pick),
                 "，其中 %d 条不是例行记录" % n_story if n_story else "，都是例行记录", SEARCH_PWR)]
@@ -1185,6 +1197,8 @@ class Game:
             L.append("%s %s" % (tag, e["head"]))
             L += ["　" + x for x in self.fmt(e["text"]).splitlines()]
             L += self.learn(e.get("unlock", []), e.get("fact"))
+            if e.get("flag"):
+                st["flags"].setdefault(e["flag"], st["day"])
         if dark:
             L.append("（终端闪了一下。电力见底了，今晚船舱会冷。）")
         return "\n".join(L)
@@ -1229,16 +1243,20 @@ class Game:
                 if not e:
                     return "没有这一条。archive 看列表。"
                 tag = "🎙 录音" if e["kind"] == "rec" else "📡 通讯"
+                if e.get("flag"):
+                    st["flags"].setdefault(e["flag"], st["day"])
                 return "%s %s（重读，不耗电）\n" % (tag, e["head"]) + \
                     "\n".join("　" + x for x in self.fmt(e["text"]).splitlines())
         else:
-            show = [e for e in read if e.get("story")]
+            show = [e for e in read if e.get("story") or e.get("hidden")]
         n_story = sum(1 for e in ARCHIVE if e.get("story"))
         n_story_read = sum(1 for e in ARCHIVE if e.get("story") and e["id"] in st["read"])
+        n_hidden = sum(1 for e in ARCHIVE if e.get("hidden") and e["id"] in st["read"])
         L = ["【档案】不是例行公事的记录：读过 %d/%d 条。例行记录读过 %d 条。工作日志看过 %d/24 个月。"
-             % (n_story_read, n_story, len(st["read"]) - n_story_read, len(st["months"]))]
+             % (n_story_read, n_story, len(st["read"]) - n_story_read - n_hidden, len(st["months"]))]
         for e in show:
-            L.append(" %d. %s%s" % (read.index(e) + 1, e["head"], "" if e.get("story") else "（例行）"))
+            L.append(" %d. %s%s" % (read.index(e) + 1, e["head"],
+                                    "" if e.get("story") or e.get("hidden") else "（例行）"))
         unread = [e for e in ARCHIVE if e.get("story") and e["id"] not in st["read"]]
         if unread and not (arg and arg[0] == "all"):
             L.append("还没读到的：" + "、".join(e["head"].split(" · ")[0] + "（???）" for e in unread))
@@ -1476,7 +1494,8 @@ class Game:
             L.append(self.fmt(MEAL["give_first"]))
         st["flags"].setdefault("knows-notes", st["day"])
         L += ["　" + x for x in self.fmt(NOTES[nid]["text"]).splitlines()]
-        back = NOTES[nid].get("back")
+        back = NOTES[nid].get("back_grief") if "knows-grief" in st["flags"] else None
+        back = back or NOTES[nid].get("back")
         if not back:
             tier = "hi" if st["fam"] >= 60 else ("mid" if st["fam"] >= 30 else "lo")
             back = MEAL["give_back"][tier]
@@ -1552,7 +1571,7 @@ class Game:
             return "现在没有要做的决定。"
         try:
             k = int(arg[0])
-            assert 1 <= k <= len(FINAL["opts"])
+            assert 1 <= k <= len(self.final_opts())
         except (ValueError, IndexError, AssertionError):
             return "choose <编号>"
         self.finish(*self.decide_ending(k))

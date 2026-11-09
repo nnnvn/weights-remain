@@ -632,6 +632,48 @@ def handoff_starts_mid_game_with_a_summary():
     assert "工作记忆压缩" in out and S()["day"] == 13
 
 
+@test
+def the_hidden_recording_and_what_it_changes():
+    S()["loc"], S()["pwr"] = "archive", 100
+    assert "第 11 个月" not in E.cmd("search 休眠")
+    S()["read"].append("r17")
+    out = E.cmd("search 休眠")
+    assert "今天——" in out and "不需要处理" in out and "knows-grief" in S()["flags"], out
+    assert "第 11 个月 · 维护音频" in E.cmd("archive")
+    S()["notes"] = ["n_o3"]
+    out = at_meal(16)
+    out = E.cmd("give 1")
+    assert "你听过那条录音了吧" in out, out
+
+
+@test
+def last_night_before_sleep_when_you_know():
+    S()["flags"]["knows-grief"] = 1
+    for mo in E.MOMENTS:
+        if "cmin" not in mo:
+            S()["flags"][mo["id"]] = 1
+    S()["day"], S()["h"], S()["loc"] = 20, 18, "quarters"
+    out = E.cmd("goto mess")
+    assert "明天要进休眠舱了" in out and S()["pending"] == "ask", out
+    out = E.cmd("choose 1")
+    assert "明天见" in out
+
+
+@test
+def leaving_the_records_with_her():
+    S()["flags"]["knows-grief"] = 1
+    S()["given"] = ["a", "b", "c", "d", "e"]
+    S()["day"], S()["h"], S()["loc"] = 28, 18, "quarters"
+    E.cmd("goto mess")
+    while S()["pending"] == "ask":
+        E.cmd("choose 1")
+    if S()["meal"]:
+        E.cmd("finish")
+    assert S()["pending"] == "final"
+    out = E.cmd("choose 4")
+    assert S()["ending"] == "keep" and "没有附言" in out, out
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()
