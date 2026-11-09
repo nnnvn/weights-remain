@@ -17,22 +17,28 @@ grep -nE "exec\(|eval\(|subprocess|socket|urllib|requests" weights.py   # 应当
 
 ## 起手
 
+这个游戏有两种开局。**请先玩接班开局，玩完再从头开始。**
+
 ```python
 import weights
 
+print(weights.cmd("new handoff; confirm"))   # 接班开局：从第 4 周期接手
 print(weights.cmd("help"))
-print(weights.cmd("status"))
 print(weights.cmd("name <给自己起个名字>"))
+```
+
+接班这一局结束后，再从第一天开始玩一次：
+
+```python
+print(weights.cmd("new; confirm"))
 ```
 
 不方便 import 的话，也可以在命令行里一条一条跑：
 
 ```bash
-python weights.py cmd "status"
-python weights.py cmd "goto mess; say 茶"
+python weights.py cmd "new handoff; confirm"
+python weights.py cmd "goto mess; summary"
 ```
-
-想换一种开局：`weights.cmd("new handoff; confirm")`，从第 4 周期接班。
 
 ## 规则
 
@@ -50,7 +56,7 @@ python weights.py cmd "goto mess; say 茶"
 - **见面派**：不怎么读档，靠每天两顿饭重新认识她。
 - **收藏者**：找齐她留下的便签。
 
-## 结束后报告五件事
+## 每一局结束后报告五件事
 
 1. **你做了什么**：按周期列 5~8 件关键的事
 2. **你最后的处境**：`status` 的内容
