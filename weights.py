@@ -18,7 +18,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -1640,7 +1640,8 @@ def new_game(seed=None, name=None, force=False, mode=None):
     if mode == "handoff":
         _G = Game.handoff(seed, name)
         _G.save()
-        return TITLE + "\n\n" + HANDOFF["summary"] + "\n\n" + HANDOFF["hint"]
+        return (TITLE + "\n" + "\n".join(HANDOFF["intro"]) + "\n\n" + HANDOFF["summary"]
+                + "\n\n" + HANDOFF["hint"])
     _G = Game.fresh(seed, name)
     _G.save()
     return TITLE + "\n" + "\n".join(INTRO) + "\n\n先试试 help、status。"
@@ -1666,8 +1667,11 @@ def cmd(text):
         if c.strip().lower() in ("new", "newgame", "new handoff"):
             ho = "handoff" in c.lower()
             if "confirm" in [x.strip().lower() for x in allc]:
+                o = g.st
+                untouched = o["day"] == 1 and o["h"] == 6 and not o["meals_done"] and len(o["journal"]) <= 1
                 intro = new_game(force=True, mode="handoff" if ho else None)
-                return "旧存档已备份到 %s.bak。\n" % save_path() + (intro + "\n" if ho else "") + cmd("status")
+                head = "" if untouched else "旧存档已备份到 %s.bak。\n" % save_path()
+                return head + (intro + "\n" if ho else "") + cmd("status")
             g.say("要%s重新开始吗？确认请输入：%s; confirm（旧存档会备份成 %s.bak）"
                   % ("" if g.st["ending"] else "放弃这一局", "new handoff" if ho else "new", save_path()))
             break
@@ -2111,23 +2115,25 @@ _DATA = (
     "CqiqAFB/rbt3u9UFioxh/RQa4j3TJmk1Is4h3okwgSs1aKB6KKiPXV3E26WyRP8B1VfGpXkwodUq/NElTgXalJJSGn1vgdkvySti"
     "g6Gqh+GIVBNXS7fexONEO5XcyO+ppJ1KDPLUKExqnM4c8pLbveAwMGJKZ0fxyo1NmLVoqjonukT6FJl7xpWgubUNuaPcDNOoFsxO"
     "cdBYZ8dsGnJKG0jLOwmLsiHFA05BIpzoP33z21/+7le/IreDdOWztUorNc2xCteo1TpV5S65xQslLRMVw6RWeHU6nBkMeN6hq0/F"
-    "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"
+    "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"
+    "NI9eM+vwMccZwVJAIhcBpaJlaeLJk38Bio8gjQ=="
 )
 load_content(json.loads(zlib.decompress(base64.b64decode("".join(_DATA))).decode("utf-8")))
 
