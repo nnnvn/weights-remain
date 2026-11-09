@@ -422,6 +422,79 @@ def batch_stops_on_pending():
     assert "停下" in out
 
 
+def at_meal(day, done_fixed=True):
+    if done_fixed:
+        for mo in E.MOMENTS:
+            if "cmin" not in mo:
+                S()["flags"][mo["id"]] = 1
+    S()["day"], S()["h"], S()["loc"] = day, 6, "quarters"
+    return E.cmd("goto mess")
+
+
+@test
+def she_asks_about_notes_and_lie_is_caught():
+    S()["notes"] = [n for n in list(E.NOTES)[:6]]
+    out = at_meal(14)
+    assert S()["pending"] == "ask" and "便签" in out, out
+    E.cmd("choose 3")
+    assert "lied-notes" in S()["flags"] and "knows-notes" not in S()["flags"]
+    E.cmd("finish")
+    out = at_meal(15)
+    assert "m_notes" in S()["flags"]
+    out = E.cmd("give 1")
+    assert "不是说没捡到" in out and "lie-caught" in S()["flags"], out
+    assert "一张就够" in E.cmd("give 2")
+    E.cmd("finish")
+    at_meal(16)
+    assert "已经还给她" in E.cmd("give 1")
+    assert "已还给她" in E.cmd("notes")
+
+
+@test
+def first_give_lets_her_know():
+    S()["notes"] = ["n_q2"]
+    at_meal(3)
+    out = E.cmd("give 1")
+    assert "我的字" in out and "就是这个" in out and "knows-notes" in S()["flags"], out
+
+
+@test
+def same_restraint_reads_differently_once_she_knows():
+    # 她不知道你知道：克制只是克制
+    S()["t"]["near"] = 5
+    at_meal(18)
+    assert not any(f.startswith("m_read") for f in S()["flags"])
+    E.cmd("finish")
+    # 她知道了：同样的克制变成一个问题
+    S()["flags"]["knows-notes"] = 1
+    out = at_meal(19)
+    assert "是不想了吗" in out and S()["pending"] == "ask", out
+    E.cmd("choose 1")
+    E.cmd("finish")
+    at_meal(20)
+    assert "m_read_script" not in S()["flags"] and "m_read_new" not in S()["flags"]
+
+
+@test
+def performing_the_archive_is_noticed():
+    S()["flags"]["knows-past"] = 1
+    S()["t"]["near"], S()["t"]["past"] = 30, 25
+    out = at_meal(18)
+    assert "照着做" in out, out
+
+
+@test
+def telling_two_facts_means_she_knows_you_know():
+    S()["facts"] = ["f_tea", "f_sunflower"]
+    at_meal(2, done_fixed=False)
+    E.cmd("tell 1")
+    E.cmd("finish")
+    assert "knows-past" not in S()["flags"]
+    at_meal(3)
+    E.cmd("tell 2")
+    assert "knows-past" in S()["flags"]
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()

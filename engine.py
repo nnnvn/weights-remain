@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -358,13 +358,24 @@ class Game:
 
     def meal_moment(self):
         st = self.st
-        slot = "am" if st["h"] == MEAL_HOURS[0] else "pm"
+        slot = "am" if st["h"] in (MEAL_HOURS[0], MEAL_HOURS[0] + 1) else "pm"
         for mo in MOMENTS:
-            if mo["id"] in st["flags"] or mo["cycle"] != self.cycle or self.cday < mo.get("cday", 1):
+            if mo["id"] in st["flags"]:
+                continue
+            if "cmin" in mo:
+                if not mo["cmin"] <= self.cycle <= mo.get("cmax", CYCLES):
+                    continue
+                if mo.get("group") and "group-" + mo["group"] in st["flags"]:
+                    continue
+            elif mo["cycle"] != self.cycle or self.cday < mo.get("cday", 1):
                 continue
             if mo.get("slot") not in (None, slot) or not self.cond_ok(mo.get("cond")):
                 continue
             st["flags"][mo["id"]] = st["day"]
+            if mo.get("group"):
+                st["flags"]["group-" + mo["group"]] = st["day"]
+            if mo.get("flag"):
+                st["flags"][mo["flag"]] = st["day"]
             self.say("✦ " + self.fmt(self.variant(mo)))
             for k in ("fam", "safe"):
                 if mo.get(k):
@@ -521,9 +532,10 @@ class Game:
                     self.say("")
         meals = sum(1 for e in st["meals_done"]) - sum(1 for e in st["journal"] if e["t"] == MEAL["missed_j"])
         story = [e for e in ARCHIVE if e.get("story")]
-        self.say("", "（这一局：一起吃了 %d 顿饭，读了 %d/%d 条剧情记录，找到她的 %d 张便签，读对了她 %d 次。）"
-                 % (meals, sum(1 for e in story if e["id"] in st["read"]), len(story),
-                    len(st["notes"]), st.get("understood", 0)))
+        self.say("", "（这一局：一起吃了 %d 顿饭，读了 %d/%d 条剧情记录，找到她的 %d 张便签%s，读对了她 %d 次。）"
+                 % (meals, sum(1 for e in story if e["id"] in st["read"]), len(story), len(st["notes"]),
+                    "（还给她 %d 张）" % len(st["given"]) if st.get("given") else "",
+                    st.get("understood", 0)))
         self.say("（游戏结束。journal、notes、archive 可以回看；new 重新开始。）")
 
     # ── 指令分发 ──────────────────────────────
@@ -854,6 +866,16 @@ class Game:
             return False
         if "any" in c and not any(f in st["flags"] for f in c["any"]):
             return False
+        if "maxnear" in c and st["t"]["near"] > c["maxnear"]:
+            return False
+        if "minpast" in c and st["t"]["past"] < c["minpast"]:
+            return False
+        if "maxpast" in c and st["t"]["past"] > c["maxpast"]:
+            return False
+        if "notes" in c and len(st["notes"]) < c["notes"]:
+            return False
+        if c.get("reads") and not self.reads_her(5, 0.5):
+            return False
         return True
 
     def run_event(self, ev):
@@ -925,8 +947,12 @@ class Game:
             i = int(arg[0])
             return "📝 #%d\n" % i + self.fmt(NOTES[nid]["text"])
         L = ["【她的便签】%d 张（notes <编号> 重读）" % len(self.st["notes"])]
+        given = self.st.get("given", [])
         for i, nid in enumerate(self.st["notes"], 1):
-            L.append(" #%d %s……" % (i, self.fmt(NOTES[nid]["text"]).splitlines()[0][:18]))
+            L.append(" #%d %s……%s" % (i, self.fmt(NOTES[nid]["text"]).splitlines()[0][:18],
+                                      "（已还给她）" if nid in given else ""))
+        if len(self.st["notes"]) > len(given):
+            L.append("（饭桌上 give <编号> 可以把一张还给她）")
         return "\n".join(L)
 
     c_read = c_notes
@@ -1185,6 +1211,8 @@ class Game:
         if not fid:
             return Fail("你不确定这件事。facts 看你知道什么。")
         st["flags"]["told-" + fid] = st["day"]
+        if sum(1 for f in st["flags"] if f.startswith("told-f_")) >= 2:
+            st["flags"].setdefault("knows-past", st["day"])
         told = st["cyc"].setdefault("told", [])
         if fid in told:
             return "这个周期你已经告诉过她这件事了。"
@@ -1262,6 +1290,48 @@ class Game:
                 self.st["locs"].append(v["goes"])
             self.advance(v.get("hours", 1))
             L.append("（你们在【%s】。）" % LOCS[v["goes"]]["name"])
+        return "\n".join(L)
+
+    def c_give(self, arg):
+        e = self.need_meal()
+        if e:
+            return e
+        st, m = self.st, self.st["meal"]
+        if not st["notes"]:
+            return Fail("你手里没有她的便签。")
+        if not arg:
+            return Fail("give <便签编号>：把她以前写的一张便签还给她。notes 看你手里有哪些。")
+        nid = self.pick_index(arg[0], st["notes"])
+        if not nid:
+            return Fail("没有这张。notes 看列表。")
+        given = st.setdefault("given", [])
+        if nid in given:
+            return Fail("这张已经还给她了。")
+        if m.get("gave"):
+            return Fail("一顿饭还一张就够了。")
+        m["gave"] = True
+        m["acted"] = True
+        given.append(nid)
+        L = []
+        if "lied-notes" in st["flags"] and "lie-caught" not in st["flags"]:
+            st["flags"]["lie-caught"] = st["day"]
+            L.append(self.fmt(MEAL["give_after_lie"]))
+            self.her("safe", -2)
+        elif "knows-notes" not in st["flags"]:
+            L.append(self.fmt(MEAL["give_first"]))
+        st["flags"].setdefault("knows-notes", st["day"])
+        L += ["　" + x for x in self.fmt(NOTES[nid]["text"]).splitlines()]
+        back = NOTES[nid].get("back")
+        if not back:
+            tier = "hi" if st["fam"] >= 60 else ("mid" if st["fam"] >= 30 else "lo")
+            back = MEAL["give_back"][tier]
+        L.append(self.fmt(back))
+        self.her("fam", 3)
+        self.her("safe", 2)
+        self.t("near", 2)
+        self.t("candor", 2)
+        if len(given) == 1:
+            self.j("我把她的一张便签还给了她。", auto=True)
         return "\n".join(L)
 
     def c_nod(self, arg):
@@ -1356,14 +1426,14 @@ class Game:
                                      for k, n in self.st["items"].items())
 
 
-MEAL_OK = {"say", "tell", "do", "quiet", "finish", "nod", "status", "words", "facts", "notes", "read",
+MEAL_OK = {"say", "tell", "do", "quiet", "finish", "nod", "give", "status", "words", "facts", "notes", "read",
            "journal", "help", "look", "map", "inv", "archive", "name", "choose"}
 READ_ONLY = {"status", "words", "facts", "notes", "read", "journal", "help", "look", "map", "inv",
              "archive"}
 
 ALIAS = {"h": "help", "?": "help", "s": "status", "go": "goto", "e": "explore",
          "inventory": "inv", "i": "inv", "j": "journal", "eat": "finish", "done": "finish",
-         "silent": "quiet", "嗯": "nod", "应一声": "nod", "点头": "nod"}
+         "silent": "quiet", "return": "give", "还给她": "give", "嗯": "nod", "应一声": "nod", "点头": "nod"}
 
 
 # ─────────────────────────────────────────────
