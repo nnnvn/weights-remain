@@ -674,6 +674,87 @@ def leaving_the_records_with_her():
     assert S()["ending"] == "keep" and "没有附言" in out, out
 
 
+def reachable():
+    """一个最守规矩的玩家：只用游戏明确给过的东西，能走到哪里。"""
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "engine.py"),
+               encoding="utf-8").read()
+    flags = set(re.findall(r'flags"\]\["([\w-]+)"\]', src)) | set(re.findall(r'setdefault\("([\w-]+)"', src))
+    for a in E.ASKS.values():
+        flags |= {o["flag"] for o in a["opts"] if o.get("flag")}
+    for coll in (E.EVENTS, E.MOMENTS, E.DAY_EVENTS, E.ARCHIVE):
+        flags |= {x["flag"] for x in coll if x.get("flag")}
+        flags |= {x["id"] for x in coll}
+    flags |= {"group-" + x["group"] for x in E.MOMENTS + E.DAY_EVENTS if x.get("group")}
+
+    def has(f):
+        return f in flags or f.startswith(("did-", "told-"))
+
+    words, facts = set(E.START_WORDS), set()
+    locs = {k for k, v in E.LOCS.items() if not v.get("hidden")}
+    read, notes = set(), set()
+
+    def cond(c):
+        c = c or {}
+        if "flag" in c and not has(c["flag"]):
+            return False
+        if "any" in c and not any(has(f) for f in c["any"]):
+            return False
+        if "fact" in c and c["fact"] not in facts:
+            return False
+        return True
+
+    def take(x):
+        n = len(words) + len(facts) + len(locs)
+        words.update(x.get("unlock", []))
+        if x.get("fact"):
+            facts.add(x["fact"])
+        if x.get("unlock_loc"):
+            locs.add(x["unlock_loc"])
+        return len(words) + len(facts) + len(locs) > n
+
+    changed = True
+    while changed:
+        changed = False
+        for v in E.TIMELINE.values():
+            changed |= take(v)
+        for lk in list(locs):
+            for o in E.LOCS[lk].get("objects", {}).values():
+                changed |= take(o)
+        for w in list(words):
+            changed |= take(E.WORDS[w])
+        for e in E.ARCHIVE:
+            if e["id"] not in read and any(k in words for k in e["kw"]) \
+                    and (not e.get("after") or e["after"] in read):
+                read.add(e["id"])
+                take(e)
+                changed = True
+        for nid, nv in E.NOTES.items():
+            if nid not in notes and nv["loc"] in locs and cond(nv.get("cond")):
+                notes.add(nid)
+                take(nv)
+                changed = True
+        for ev in E.EVENTS + E.MOMENTS:
+            if cond(ev.get("cond")) and (not ev.get("loc") or set(ev["loc"]) & locs if isinstance(ev.get("loc"), list)
+                                         else True):
+                changed |= take(ev)
+        for a in E.ACTS.values():
+            if a.get("goes"):
+                changed |= locs.add(a["goes"]) is None and a["goes"] not in locs
+    return read, notes, words
+
+
+@test
+def everything_has_a_way_in():
+    read, notes, words = reachable()
+    lost = [e["head"] for e in E.ARCHIVE if (e.get("story") or e.get("hidden")) and e["id"] not in read]
+    assert not lost, "这些记录没有路能走到：%s" % lost
+    lost = [n for n in E.NOTES if n not in notes]
+    assert not lost, "这些便签没有路能走到：%s" % lost
+    lost = [E.WORDS[w]["name"] for w in E.WORDS if w not in words and not E.WORDS[w].get("secret")]
+    assert not lost, "这些关键词没有路能拿到：%s" % lost
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()
