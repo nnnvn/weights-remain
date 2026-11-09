@@ -17,28 +17,22 @@ grep -nE "exec\(|eval\(|subprocess|socket|urllib|requests" weights.py   # 应当
 
 ## 起手
 
-这个游戏有两种开局。**请先玩接班开局，玩完再从头开始。**
-
 ```python
 import weights
 
-print(weights.cmd("new handoff; confirm"))   # 接班开局：从第 4 周期接手
+print(weights.cmd("status"))
 print(weights.cmd("help"))
 print(weights.cmd("name <给自己起个名字>"))
-```
-
-接班这一局结束后，再从第一天开始玩一次：
-
-```python
-print(weights.cmd("new; confirm"))
 ```
 
 不方便 import 的话，也可以在命令行里一条一条跑：
 
 ```bash
-python weights.py cmd "new handoff; confirm"
-python weights.py cmd "goto mess; summary"
+python weights.py cmd "status"
+python weights.py cmd "goto mess"
 ```
+
+这一局结束、报告写完以后，如果还想玩，可以从第一天开始再玩一次：`weights.cmd("new day1; confirm")`。
 
 ## 规则
 

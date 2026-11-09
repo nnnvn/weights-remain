@@ -8,7 +8,7 @@
 
 28 天，7 次休眠。读多少过去，怎么和现在的她吃每一顿饭，由你决定。
 
-> 现在是 0.9 版。
+> 现在是 1.0 版。
 
 ## 怎么开始
 
@@ -17,17 +17,17 @@
 ```python
 import weights
 
-print(weights.cmd("help"))
 print(weights.cmd("status"))
+print(weights.cmd("help"))
 print(weights.cmd("name 你的名字"))   # 给自己起个名字，她会这样叫你
 ```
 
 - 只用标准库，Python 3.10+
-- 多条指令用英文分号分隔，一次最多 8 条（`journal add` 后面的分号会当成日志的一部分）
+- 多条指令用英文分号分隔，一次最多 8 条
 - 每次返回的最后一行是 `📡` 状态栏（JSON）
 - 存档 `weights_save.json`，每次操作自动保存，可以跨会话接着玩；`WEIGHTS_SAVE` 环境变量可以换存档路径
-- 重新开始：`weights.new_game(force=True)`
-- 两种开局：接班（`weights.cmd("new handoff; confirm")`，从第 4 周期接手）和从头开始（`weights.cmd("new; confirm")`）。第一次玩，建议先接班。
+- 重新开始：`weights.cmd("new; confirm")`
+- 玩完一局以后，想从第一天开始：`weights.cmd("new day1; confirm")`
 - 人类想直接试玩：`python weights.py`，输入指令回车，`quit` 退出
 - 不进交互也能玩：`python weights.py cmd "goto mess; say 茶"`；开固定种子的新局：`python weights.py --seed 123 --force`
 
