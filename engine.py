@@ -9,12 +9,12 @@ import os
 import random
 import shutil
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
               "FACTS", "ACTS", "ARCHIVE", "TIMELINE", "NOTES", "EVENTS", "FLAVOR",
-              "MEAL", "MOMENTS", "MISC", "EXCUSES", "ASKS", "MOODS",
+              "MEAL", "SPEAK", "MOMENTS", "MISC", "EXCUSES", "ASKS", "MOODS",
               "MOOD_POOL", "MOOD_FIXED", "FLAVOR_LAST", "DAY_EVENTS", "HANDOFF", "WAKE", "STATUS_TEXT", "FINAL", "ENDINGS")
 
 
@@ -393,7 +393,6 @@ class Game:
             st["flags"][o["flag"]] = st["day"]
         if o.get("stay"):
             st["flags"]["stayed-night"] = st["day"]
-            self.end_meal(silent=True)
         if o.get("wake"):
             st["flags"]["wake-early"] = st["day"]
         if o.get("optimal"):
@@ -542,6 +541,25 @@ class Game:
         self.st["meal"] = None
         if not silent:
             self.say(self.pick_by_cycle(MEAL["end"]))
+
+    def pick_fresh(self, lines):
+        """同一个周期里抽过的先不抽；整局用过的也尽量避开。"""
+        if isinstance(lines, str):
+            return lines
+        cu = self.st["cyc"].setdefault("fresh", [])
+        used = self.st.setdefault("used", [])
+        choices = [x for x in lines if x not in cu and x not in used] or \
+                  [x for x in lines if x not in cu]
+        if not choices:
+            return None
+        r = self.rng()
+        line = r.choice(choices)
+        self.save_rng(r)
+        cu.append(line)
+        if line not in used:
+            used.append(line)
+            del used[:-400]
+        return line
 
     def pick_by_cycle(self, lines):
         """lines 是字符串或列表；列表按周期往后挑，并避开上一句。"""
@@ -980,13 +998,19 @@ class Game:
         if kind == "event":
             return "event", self.run_event(obj)
         lines = FLAVOR.get(loc, FLAVOR["_"])
+        spent = not notes_here and not any(
+            p[0] == "event" and p[1]["id"] not in st["cd"] for p in pool)
         last = st["flags"].get("flavor-" + loc)
         choices = [x for x in lines if x != last] or lines
         r = self.rng()
         line = r.choice(choices)
         self.save_rng(r)
         st["flags"]["flavor-" + loc] = line
-        return "flavor", [self.fmt(line)]
+        out = [self.fmt(line)]
+        if spent and st["flags"].get("spent-" + loc) != st["day"]:
+            st["flags"]["spent-" + loc] = st["day"]
+            out.append(MEAL["explore_spent"])
+        return "flavor", out
 
     def variant(self, v, key="text"):
         """v[key] 是默认文字；v["var"] 是 [[条件, 文字], ...]，取最后一条满足的。"""
@@ -1121,7 +1145,11 @@ class Game:
             L.append(" #%d %s……%s" % (i, self.fmt(NOTES[nid]["text"]).splitlines()[0][:18],
                                       "（已还给她）" if nid in given else ""))
         if len(self.st["notes"]) > len(given):
-            L.append("（饭桌上 give <编号> 可以把一张还给她）")
+            rest = len(self.st["notes"]) - len(given)
+            if "n_to5" in self.st["notes"] and rest >= 3:
+                L.append("（饭桌上 give <编号> 还一张；give 全部，剩下的 %d 张一次还给她）" % rest)
+            else:
+                L.append("（饭桌上 give <编号> 可以把一张还给她）")
         if written:
             L.append("【她记下的你说的话】")
             L += ["　他说：“%s”" % x["t"] for x in written]
@@ -1167,7 +1195,9 @@ class Game:
         st["pwr"] = clamp(st["pwr"] + 20, 0, 100)
         self.morning()
         self.new_cycle_state()
-        if st["flags"].get("stayed-night") in (st["day"], st["day"] - 1):
+        if st["flags"].get("stayed-lastnight") == st["day"] - 1:
+            L = [self.fmt(MEAL["stayed_lastnight"]), ""]
+        elif st["flags"].get("stayed-night") in (st["day"], st["day"] - 1):
             L = ["💤 她已经睡着了。你躺进自己的休眠舱，盖子合上之前，又往她那边看了一眼。", ""]
         else:
             L = ["💤 你和她各自躺进休眠舱。盖子合上之前，她隔着两米朝你点了点头。", ""]
@@ -1359,6 +1389,11 @@ class Game:
             if st["fam"] >= need and self.cycle >= (entry[2] if len(entry) > 2 else 1) and \
                     self.cond_ok(entry[3] if len(entry) > 3 else None):
                 text = line
+        used = st.setdefault("used", [])
+        if text in used and w.get("later"):
+            text = self.pick_fresh(w["later"]) or text
+        elif text not in used:
+            used.append(text)
         self.her("fam", w.get("fam", 2))
         self.t("near", 1)
         L = [self.fmt(text)]
@@ -1507,6 +1542,8 @@ class Game:
             return Fail("你手里没有她的便签。")
         if not arg:
             return Fail("give <便签编号>：把她以前写的一张便签还给她。notes 看你手里有哪些。")
+        if arg[0].lower() in ("all", "全部", "都", "所有", "剩下的"):
+            return self.give_rest()
         nid = self.pick_index(arg[0], st["notes"])
         if not nid:
             return Fail("没有这张。notes 看列表。")
@@ -1547,6 +1584,36 @@ class Game:
             self.j("我把她的一张便签还给了她。", auto=True)
         return "\n".join(L)
 
+    def give_rest(self):
+        """便签里她说过“要是哪天你都还给我”。拿到那一张以后，可以一次还完。"""
+        st, m = self.st, self.st["meal"]
+        given = st.setdefault("given", [])
+        rest = [n for n in st["notes"] if n not in given]
+        if "n_to5" not in st["notes"]:
+            return Fail("一张一张还吧：give <便签编号>。")
+        if not rest:
+            return Fail("你手里的便签都还给她了。")
+        if m.get("gave") or m["dos"] >= MAX_DOS:
+            return Fail("这顿饭已经做过一件事了。下顿再还吧。")
+        if len(rest) < 3:
+            return Fail(self.fmt(MEAL["give_rest_none"]))
+        m["gave"] = True
+        m["dos"] += 1
+        m["acted"] = True
+        given += rest
+        st["flags"].setdefault("knows-notes", st["day"])
+        st["flags"]["gave-rest"] = st["day"]
+        L = [self.fmt(MEAL["give_rest"]).replace("{n}", str(len(rest)))]
+        self.her("fam", 4)
+        self.her("safe", 2)
+        self.t("near", 2)
+        self.t("candor", 6)
+        if len(given) >= 10 and "gave-all" not in st["flags"]:
+            st["flags"]["gave-all"] = st["day"]
+            L.append(self.fmt(MEAL["give_all"]))
+        self.j("我把手里剩下的便签都还给了她。", auto=True)
+        return "\n".join(L)
+
     def c_speak(self, arg):
         st = self.st
         if st["pending"] != "final":
@@ -1579,8 +1646,29 @@ class Game:
         elif m.get("open"):
             L.append(self.fmt(self.pick_by_cycle(MEAL["speak_answered"])))
         else:
-            L.append(self.fmt(self.pick_by_cycle(MEAL["speak_listen"])))
+            L.append(self.fmt(self.speak_reply(text)))
         return "\n".join(L)
+
+    def speak_reply(self, text):
+        """认词、认问句、认长短，再看她今天的状态。抽过的这个周期先不抽。"""
+        st = self.st
+        bare = text.rstrip("。！!…~～ ")
+        n = len(bare)
+        tries = [SPEAK["long"]] if n >= SPEAK["long_len"] else []
+        for e in SPEAK["keys"]:
+            if any(k in text for k in e["kw"]):
+                tries.append(e["lines"])
+        if bare.endswith(("？", "?", "吗", "呢", "么")):
+            tries.append(SPEAK["question"])
+        if n <= SPEAK["short_len"]:
+            tries.append(SPEAK["short"])
+        tries.append(SPEAK["mood"].get(st.get("mood", "normal"), []))
+        tries.append(MEAL["speak_listen"])
+        for pool in tries:
+            line = self.pick_fresh(pool) if pool else None
+            if line:
+                return line
+        return self.pick_by_cycle(MEAL["speak_listen"])
 
     def c_bar(self, arg):
         if arg and arg[0] in ("off", "关"):

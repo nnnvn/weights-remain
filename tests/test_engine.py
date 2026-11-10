@@ -658,7 +658,56 @@ def last_night_before_sleep_when_you_know():
     out = E.cmd("goto mess")
     assert "进休眠舱了" in out and S()["pending"] == "ask", out
     out = E.cmd("choose 1")
-    assert "明天见" in out
+    assert S()["meal"], "陪她坐着的时候，这顿饭还没结束"
+    out = E.cmd("speak 下次醒来，我还坐这儿")
+    assert "你说：" in out, out
+    E.cmd("finish")
+    E.cmd("goto quarters")
+    out = E.cmd("sleep")
+    assert "明天见" in out, out
+
+
+@test
+def speak_hears_what_you_said():
+    S()["day"], S()["h"], S()["loc"] = 2, 7, "mess"
+    E.cmd("goto mess")
+    g = E._G
+    g.st["mood"] = "normal"
+    assert "茶" in g.speak_reply("今天的茶很好喝")
+    q = g.speak_reply("你在想什么？")
+    assert q in E.SPEAK["question"], q
+    assert g.speak_reply("我想了很久，一直想跟你说，不管下次醒来我还记不记得，我都会先来食堂舱，坐在这把椅子上等你") in E.SPEAK["long"]
+    assert g.speak_reply("嗯") in E.SPEAK["short"]
+    g.st["mood"] = "tired"
+    assert g.speak_reply("我在舰桥校准了航线。") in E.SPEAK["mood"]["tired"]
+    seen = [g.speak_reply("你好吗？") for _ in range(len(E.SPEAK["question"]) - 1)]
+    assert len(set(seen)) == len(seen), "同一个周期里不重复"
+
+
+@test
+def song_does_not_ask_after_you_hummed():
+    S()["fam"] = 80
+    S()["flags"]["did-a_song"] = 1
+    S()["words"].append("song")
+    S()["day"], S()["h"], S()["loc"] = 2, 7, "mess"
+    E.cmd("goto mess")
+    out = E.cmd("say 那首歌")
+    assert "你现在会吗" not in out, out
+
+
+@test
+def give_the_rest_at_once():
+    notes = list(E.NOTES)[:12]
+    S()["notes"] = notes
+    S()["day"], S()["h"], S()["loc"] = 2, 7, "mess"
+    E.cmd("goto mess")
+    assert "Fail" in type(E._G.c_give(["全部"])).__name__ or "一张一张" in str(E._G.c_give(["全部"]))
+    S()["notes"] = notes + ["n_to5"]
+    out = E.cmd("notes")
+    assert "give 全部" in out, out
+    out = E.cmd("give 全部")
+    assert "一共 13 张" in out, out
+    assert set(S()["given"]) == set(S()["notes"])
 
 
 @test
@@ -817,9 +866,9 @@ def staying_until_she_sleeps_reads_cleanly():
     S()["day"], S()["h"], S()["loc"] = 16, 18, "quarters"
     E.cmd("goto mess")
     E.cmd("choose 1")
-    assert not S()["meal"]
-    out = E.cmd("goto quarters; wait 1; sleep")
-    assert "她已经睡着了" in out and "各自躺进" not in out, out
+    assert S()["meal"]
+    out = E.cmd("finish; goto quarters; wait 1; sleep")
+    assert "明天见" in out and "各自躺进" not in out, out
 
 
 @test

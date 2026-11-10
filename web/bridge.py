@@ -51,4 +51,5 @@ def ui():
                    "head": g.fmt(W.NOTES[n]["text"]).splitlines()[0][:18]} for n in st["notes"]],
         "months": [m for m in range(1, 25) if m not in st["months"]],
         "handoff": "handoff" in st["flags"],
+        "giverest": "n_to5" in st["notes"] and sum(n not in st.get("given", []) for n in st["notes"]) >= 3,
     }, ensure_ascii=False)

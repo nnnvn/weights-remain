@@ -295,7 +295,7 @@ button { font: inherit; cursor: pointer; }
       if (open === "do") dock.appendChild(sub(S.acts.map((a) => btn(a, "", () => act("do " + a, a)))));
       if (open === "say") dock.appendChild(sub(S.words.map((w) => btn(w, "", () => act("say " + w, "提起：" + w)))));
       if (open === "tell") dock.appendChild(sub(S.facts.map((f, i) => btn(f, "", () => act("tell " + (i + 1), "告诉她：" + f)))));
-      if (open === "give") dock.appendChild(sub(S.notes.map((n, i) => btn(n.head + "……", n.given ? "given" : "", () => act("give " + (i + 1), "还给她：" + n.head), n.given))));
+      if (open === "give") dock.appendChild(sub((S.giverest ? [btn("剩下的都还给她", "", () => act("give 全部", "把剩下的便签都还给她"))] : []).concat(S.notes.map((n, i) => btn(n.head + "……", n.given ? "given" : "", () => act("give " + (i + 1), "还给她：" + n.head), n.given)))));
       dock.appendChild(sayBox("speakInput", "想对她说的话（原话说出口，每顿一次）", (v) => act("speak " + v, "“" + v + "”")));
       return;
     }
