@@ -593,6 +593,8 @@ MOMENTS = [
      "text": "她吃饭的时候看了看自己的手：“昨天那个卡扣，其实我拧得动的。”她说得很平常。"},
     {"id": "m_e_skip", "cmin": 5, "prio": True, "safe": 1, "cond": {"yesterday": "d-skip"},
      "text": "她今天饭盛得特别满。“昨天没吃晚饭，饿到现在。”她说，“……可是挺值的。”"},
+    {"id": "m_e_carry", "cmin": 5, "prio": True, "safe": 1, "cond": {"yesterday": "d-carry"},
+     "text": "她给你盛粥的时候说：“昨天的粥，凉的也挺好吃的。”她顿了一下，“……下次还去那边吃吧。”"},
     {"id": "m_e_ate", "cmin": 5, "prio": True, "safe": -1, "cond": {"yesterday": "d-ate"},
      "text": "她说：“昨天那颗星星，后来我一个人去看了。”她顿了一下，“也挺好看的。”"},
     {"id": "m_guess", "cmin": 4, "cmax": 6, "ask": "q_guess", "cond": {"any": ["knows-past", "knows-notes"]},
@@ -718,7 +720,7 @@ ASKS = {
          "flag": "d-skip", "j": "那天我们没吃晚饭，去看了星星。",
          "r": "你们在观察窗前坐到很晚。那颗星星一点也不大，她看得很认真。你的肚子叫了一声，她笑得停不下来。"},
         {"t": "“把饭带上，去那边吃。”", "skipmeal": True, "loc": "oldpods", "hours": 2, "safe": 4, "near": 2,
-         "flag": "d-skip", "j": "那天我们端着碗去观察窗吃的晚饭。",
+         "flag": "d-carry", "j": "那天我们端着碗去观察窗吃的晚饭。",
          "r": "你们端着碗去了观察窗。粥凉得很快。她说：“凉的也挺好吃的。”"}]},
     "q_guess": {"opts": [
         {"t": "“去看我醒了没有。”", "optimal": True, "past": 3, "safe": -1,

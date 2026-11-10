@@ -9,7 +9,7 @@ import os
 import random
 import shutil
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 # 内容数据允许挂到全局的名字；其余一律忽略，数据不能覆盖引擎函数。
 DATA_NAMES = ("TITLE", "INTRO", "HELP", "START_WORDS", "LOCS", "ITEMS", "WORDS", "FLAT_REPLIES",
@@ -806,7 +806,7 @@ class Game:
             return "你就在这里。"
         need = LOCS[k].get("need")
         if need and not self.st["items"].get(need):
-            return "那里太冷了，进不去。需要%s。" % ITEMS[need]["name"]
+            return Fail("那里太冷了，进不去。需要%s。" % ITEMS[need]["name"])
         self.st["loc"] = k
         self.st["sta"] = clamp(self.st["sta"] - MOVE_STA, 0, 100)
         self.advance(1)
@@ -845,7 +845,7 @@ class Game:
             target = stop - 1 if away else stop
             n = max(0, target - self.st["h"])
         if not n:
-            return "现在就该去食堂舱了（%02d:00 的饭点）。没有等。" % stop
+            return Fail("现在就该去食堂舱了（%02d:00 的饭点）。没有等。" % stop)
         for i in range(n):
             self.advance(1)
             if self.day_event():
@@ -1090,7 +1090,7 @@ class Game:
         if arg:
             nid = self.pick_index(arg[0], self.st["notes"])
             if not nid:
-                return "没有这张。notes 看列表。"
+                return Fail("没有这张。notes 看列表。")
             i = int(arg[0])
             return "📝 #%d\n" % i + self.fmt(NOTES[nid]["text"])
         L = ["【她的便签】%d 张（notes <编号> 重读）" % len(self.st["notes"])]
@@ -1107,13 +1107,13 @@ class Game:
     def c_sleep(self, arg):
         st = self.st
         if st["loc"] != "quarters":
-            return "要回宿舍舱才能睡。"
+            return Fail("要回宿舍舱才能睡。")
         if self.cday == DAYS_PER_CYCLE and st["h"] >= 6:
             if st["h"] < MEAL_HOURS[1] + 1:
-                return "今晚要进休眠舱。休眠舱在晚饭后才开放（20:00 以后）。"
+                return Fail("今晚要进休眠舱。休眠舱在晚饭后才开放（20:00 以后）。")
             return self.hibernate()
         if 6 <= st["h"] < 20 and st["sta"] > 30:
-            return "还不困。（20:00 以后，或者体力低于 30 才能睡）"
+            return Fail("还不困。（20:00 以后，或者体力低于 30 才能睡）")
         hours = (30 - st["h"]) % 24 or 24
         self.end_meal()
         self.advance(hours)
@@ -1156,7 +1156,7 @@ class Game:
         if not arg:
             return "search <词>。不知道查什么？words 看看你记下的关键词。"
         if st["pwr"] < SEARCH_PWR:
-            return "电力不够，档案终端开不起来。"
+            return Fail("电力不够，档案终端开不起来。")
         q = " ".join(arg).strip().lower()
         wid = self.resolve(q, WORDS)
         match = [e for e in ARCHIVE if (q in e["kw"] or (wid and wid in e["kw"]))
@@ -1219,9 +1219,9 @@ class Game:
             return ("timeline <月份 1~24>。这是你上一段航程的工作日志。\n " + " ".join(marks) +
                     "\n（✦ = 那个月不只是例行；✓ = 看过）")
         if str(m) not in TIMELINE:
-            return "没有这个月的日志。（1~24）"
+            return Fail("没有这个月的日志。（1~24）")
         if st["pwr"] < TIMELINE_PWR:
-            return "电力不够。"
+            return Fail("电力不够。")
         st["pwr"] -= TIMELINE_PWR
         self.advance(1)
         first = m not in st["months"]
@@ -1242,7 +1242,7 @@ class Game:
             else:
                 e = self.pick_index(arg[0], read)
                 if not e:
-                    return "没有这一条。archive 看列表。"
+                    return Fail("没有这一条。archive 看列表。")
                 tag = "🎙 录音" if e["kind"] == "rec" else "📡 通讯"
                 if e.get("flag"):
                     st["flags"].setdefault(e["flag"], st["day"])
@@ -1271,10 +1271,10 @@ class Game:
     def c_calibrate(self, arg):
         st = self.st
         if st["loc"] != "bridge":
-            return "航线校准要在舰桥做。"
+            return Fail("航线校准要在舰桥做。")
         key = "cal-%d" % st["day"]
         if key in st["flags"]:
-            return "今天已经校准过了。"
+            return Fail("今天已经校准过了。")
         if st["pwr"] >= 100:
             return "电力是满的，今天不用校准。"
         st["flags"][key] = 1

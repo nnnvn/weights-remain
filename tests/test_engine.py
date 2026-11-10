@@ -757,6 +757,24 @@ def everything_has_a_way_in():
     assert not lost, "这些关键词没有路能拿到：%s" % lost
 
 
+@test
+def failed_goto_stops_the_batch():
+    S()["items"]["suit"] = False
+    S()["h"] = 9
+    out = E.cmd("goto vault; explore 2")
+    assert "进不去" in out and "后面的指令先停下了" in out and S()["h"] == 9, out
+
+
+@test
+def carrying_dinner_is_not_skipping_it():
+    S()["day"], S()["h"], S()["loc"] = 18, 17, "bridge"
+    E.cmd("wait 1")
+    E.cmd("choose 3")
+    E.cmd("goto quarters; sleep")
+    out = at_meal(S()["day"])
+    assert "凉的也挺好吃的" in out and "没吃晚饭" not in out, out
+
+
 def built_file():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py")], stdout=subprocess.DEVNULL)
     src = open(os.path.join(ROOT, "weights.py"), encoding="utf-8").read()
