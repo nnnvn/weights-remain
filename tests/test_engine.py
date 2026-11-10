@@ -656,7 +656,7 @@ def last_night_before_sleep_when_you_know():
             S()["flags"][mo["id"]] = 1
     S()["day"], S()["h"], S()["loc"] = 20, 18, "quarters"
     out = E.cmd("goto mess")
-    assert "明天要进休眠舱了" in out and S()["pending"] == "ask", out
+    assert "进休眠舱了" in out and S()["pending"] == "ask", out
     out = E.cmd("choose 1")
     assert "明天见" in out
 
@@ -773,6 +773,61 @@ def carrying_dinner_is_not_skipping_it():
     E.cmd("goto quarters; sleep")
     out = at_meal(S()["day"])
     assert "凉的也挺好吃的" in out and "没吃晚饭" not in out, out
+
+
+@test
+def what_you_say_comes_back_in_her_handwriting():
+    to_breakfast()
+    out = E.cmd("speak 会。我会坐在这儿。")
+    assert "你说：“会。我会坐在这儿。”" in out, out
+    assert "已经说过" in E.cmd("speak 再说一句")
+    E.cmd("finish")
+    S()["day"], S()["h"], S()["loc"] = S()["day"] + 1, 6, "quarters"
+    out = E.cmd("goto mess")
+    assert "他说：“会。我会坐在这儿。”" in out and "先记下来" in out, out
+    assert "她记下的你说的话" in E.cmd("notes")
+
+
+@test
+def answering_the_question_from_last_cycle():
+    E.new_game(seed=3, force=True)
+    E.cmd("goto mess")
+    out = E.cmd("choose 3; speak 会。")
+    assert "这是我问过你的吗" in out, out
+
+
+@test
+def speak_before_the_last_choice():
+    S()["day"], S()["h"], S()["loc"] = 28, 18, "quarters"
+    E.cmd("goto mess")
+    while S()["pending"] == "ask":
+        E.cmd("choose 1")
+    if S()["meal"]:
+        E.cmd("finish")
+    out = E.cmd("speak 谢谢你每天都泡两杯茶。")
+    assert S()["pending"] == "final" and "转了半圈" in out, out
+
+
+@test
+def staying_until_she_sleeps_reads_cleanly():
+    S()["flags"]["knows-grief"] = 1
+    for mo in E.MOMENTS:
+        if "cmin" not in mo:
+            S()["flags"][mo["id"]] = 1
+    S()["day"], S()["h"], S()["loc"] = 16, 18, "quarters"
+    E.cmd("goto mess")
+    E.cmd("choose 1")
+    assert not S()["meal"]
+    out = E.cmd("goto quarters; wait 1; sleep")
+    assert "她已经睡着了" in out and "各自躺进" not in out, out
+
+
+@test
+def waking_early_when_she_said_to():
+    S()["flags"]["wake-early"] = 5
+    S()["day"], S()["h"], S()["loc"] = 5, 21, "quarters"
+    out = E.cmd("sleep")
+    assert "醒得好早" in out, out
 
 
 def built_file():
