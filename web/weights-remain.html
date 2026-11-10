@@ -1,0 +1,352 @@
+<title>权重还在</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+XiaoWei&display=swap">
+<style>
+/* Layout: one-screen ship console — status strip on top, the night's transcript in the middle, a dock of what you can do now at the bottom. */
+:root {
+  --bg: #0e1320;          /* the ship at night */
+  --surface: #151b2a;
+  --raise: #1c2436;
+  --line: #273149;
+  --fg: #dde2ec;
+  --muted: #8890a5;
+  --lamp: #e7b469;        /* the warm lamp over the mess table, the tea */
+  --lamp-soft: rgba(231, 180, 105, 0.14);
+  --her: #b9c9ea;         /* what she says and does */
+  --paper: #ece4d3;       /* her notes */
+  --ink: #2c2a31;
+  --rec: #9fb7a7;         /* recordings */
+  --serif: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --hand: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #edf0f5; --surface: #ffffff; --raise: #f4f6fa; --line: #d5dbe6;
+    --fg: #1b2132; --muted: #5b6478; --lamp: #9a5f17; --lamp-soft: rgba(154, 95, 23, 0.10);
+    --her: #2f4f8a; --paper: #f8f1e1; --ink: #2c2a31; --rec: #3f6b52;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #edf0f5; --surface: #ffffff; --raise: #f4f6fa; --line: #d5dbe6;
+  --fg: #1b2132; --muted: #5b6478; --lamp: #9a5f17; --lamp-soft: rgba(154, 95, 23, 0.10);
+  --her: #2f4f8a; --paper: #f8f1e1; --ink: #2c2a31; --rec: #3f6b52;
+  color-scheme: light;
+}
+
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); margin: 0; }
+#app { height: 100%; display: flex; flex-direction: column; max-width: 760px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* status strip */
+.strip { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 14px 10px;
+  border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+.strip .name { font-family: var(--serif); font-weight: 900; font-size: 17px; letter-spacing: 0.24em; color: var(--fg); margin-right: auto; }
+.strip .clock { font-variant-numeric: tabular-nums; color: var(--fg); letter-spacing: 0.04em; }
+.strip .loc { color: var(--lamp); }
+.meter { display: inline-flex; align-items: center; gap: 6px; }
+.meter i { display: block; width: 46px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.meter i b { display: block; height: 100%; background: var(--muted); }
+.meter.pwr i b { background: var(--lamp); }
+
+/* transcript */
+#feed { flex: 1; min-height: 0; overflow-y: auto; padding-block: 18px 24px; scroll-behavior: smooth; }
+.turn { display: flex; flex-direction: column; gap: 10px; padding-block: 6px 18px; animation: rise .35s ease both; }
+@keyframes rise { from { opacity: .35; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .turn { animation: none; } #feed { scroll-behavior: auto; } }
+.you { align-self: flex-end; font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+.p { font-family: var(--serif); font-size: 16.5px; line-height: 1.95; margin: 0; max-width: 34em; white-space: pre-wrap; }
+.aside { font-size: 13.5px; line-height: 1.8; color: var(--muted); margin: 0; }
+.meal { font-family: var(--serif); font-size: 16.5px; line-height: 1.9; margin: 0; padding: 10px 14px; border-radius: 10px;
+  background: var(--lamp-soft); color: var(--fg); }
+.meal::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--lamp);
+  margin-right: 10px; vertical-align: 2px; box-shadow: 0 0 10px var(--lamp); }
+.moment { font-family: var(--serif); font-size: 16.5px; line-height: 1.95; margin: 0; color: var(--her); }
+.head { font-size: 12px; letter-spacing: 0.18em; color: var(--muted); margin: 6px 0 0; }
+.tag { align-self: flex-start; font-size: 12.5px; color: var(--lamp); border: 1px dashed var(--lamp); border-radius: 6px; padding: 2px 9px; }
+.sleep { font-family: var(--serif); font-size: 15px; color: var(--muted); text-align: center; padding-block: 8px; letter-spacing: 0.06em; }
+.rule { text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.4em; padding-block: 10px; }
+.opts { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--muted); line-height: 1.8; }
+
+.note { align-self: flex-start; max-width: 30em; background: var(--paper); color: var(--ink); border-radius: 3px;
+  padding: 14px 18px 16px; box-shadow: 0 6px 18px rgba(0,0,0,.18); transform: rotate(-0.6deg); }
+.note:nth-of-type(even) { transform: rotate(0.5deg); }
+.note small { display: block; font-family: var(--sans); font-size: 11px; letter-spacing: 0.16em; color: #8a7f6a; margin-bottom: 6px; }
+.note p { margin: 0; font-family: var(--hand); font-size: 18px; line-height: 1.75; white-space: pre-wrap; }
+
+.rec { border-left: 2px solid var(--rec); padding: 4px 0 4px 14px; }
+.rec small { display: block; font-size: 11.5px; letter-spacing: 0.14em; color: var(--rec); margin-bottom: 4px; }
+.rec p { margin: 0; font-family: var(--serif); font-size: 15.5px; line-height: 1.95; white-space: pre-wrap; }
+
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+.summary pre { margin: 0; font-family: var(--sans); font-size: 13.5px; line-height: 1.85; white-space: pre-wrap; color: var(--fg); }
+
+/* dock */
+#dock { border-top: 1px solid var(--line); padding-block: 12px max(14px, env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 10px; }
+.hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; cursor: pointer; }
+.b { font-family: var(--sans); font-size: 14px; color: var(--fg); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 14px; transition: border-color .15s, background .15s; }
+.b:hover { border-color: var(--muted); }
+.b.on { border-color: var(--lamp); color: var(--lamp); }
+.b.main { border-color: var(--lamp); color: var(--lamp); background: var(--lamp-soft); }
+.b.quiet { color: var(--muted); }
+.b[disabled] { opacity: .45; cursor: default; }
+.b:focus-visible, .choice:focus-visible, input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.choice { display: block; width: 100%; text-align: left; font-family: var(--serif); font-size: 16px; line-height: 1.7; color: var(--fg);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.choice:hover { border-color: var(--lamp); }
+.choices { display: flex; flex-direction: column; gap: 8px; }
+.sub { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; background: var(--raise); border-radius: 10px; }
+.sub .b { font-size: 13.5px; padding: 6px 12px; }
+.sub .b.given { text-decoration: line-through; opacity: .5; }
+.say { display: flex; gap: 8px; }
+.say input { flex: 1; min-width: 0; font: 15px var(--serif); color: var(--fg); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 8px 14px; }
+.say input::placeholder { color: var(--muted); }
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
+
+/* boot */
+#boot { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 20;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+#boot .box { max-width: 26em; display: flex; flex-direction: column; gap: 14px; }
+#boot h1 { margin: 0; font-family: var(--serif); font-weight: 900; font-size: 34px; letter-spacing: 0.3em; text-wrap: balance; }
+#boot p { margin: 0; font-family: var(--serif); font-size: 15px; line-height: 1.9; color: var(--muted); }
+#boot .state { font-family: var(--sans); font-size: 13px; color: var(--lamp); }
+.pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--lamp); margin-right: 8px; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+
+@media (max-width: 480px) {
+  .p, .moment, .meal { font-size: 16px; }
+  .strip { gap: 10px; }
+  .meter i { width: 34px; }
+}
+</style>
+
+<div id="boot">
+  <div class="box">
+    <h1>权重还在</h1>
+    <p>迟光号上只有两个人造人维护员，轮流清醒，轮流休眠。每次休眠，最近的事都会变模糊。</p>
+    <div class="state" id="bootState"><span class="pulse"></span>正在唤醒……第一次打开要加载十几 MB，稍等一会儿。</div>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header class="strip" id="strip"></header>
+  <main id="feed" aria-live="polite"></main>
+  <section id="dock" aria-label="你现在可以做的事"></section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pyodide@0.26.4/pyodide.asm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pyodide@0.26.4/pyodide.js"></script>
+<script>
+(() => {
+  const KEY = "weights-remain-save";
+  const $ = (id) => document.getElementById(id);
+  const feed = $("feed"), dock = $("dock"), strip = $("strip");
+  let B = null, S = null, open = null, confirming = null;
+
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const store = {
+    get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} },
+  };
+
+  // —— 把一段输出排成页面 ——
+  function render(text, label) {
+    const turn = document.createElement("div");
+    turn.className = "turn";
+    if (label) turn.insertAdjacentHTML("beforeend", `<div class="you">${esc(label)}</div>`);
+    const lines = text.split("\n");
+    let i = 0;
+    const take = (pred) => { const out = []; while (i < lines.length && pred(lines[i])) out.push(lines[i++]); return out; };
+    while (i < lines.length) {
+      const l = lines[i];
+      const t = l.trim();
+      if (!t) { i++; continue; }
+      if (t.startsWith("▶ ")) { i++; continue; }
+      if (/^（.*(say ·|say &lt;|choose <|choose &lt;|do 看能做什么|summary 可以|give <|give &lt;|用 choose|journal、notes|new 重新开始|search <|archive <|notes <|timeline <|wait <|goto <|bar on).*）$/.test(t) || /^（say/.test(t)) { i++; continue; }
+      if (l.startsWith("　") && t) {
+        const body = take((x) => x.startsWith("　"));
+        turn.insertAdjacentHTML("beforeend", `<div class="note"><p>${esc(body.map((x) => x.replace(/^　/, "")).join("\n"))}</p></div>`);
+        continue;
+      }
+      if (t.startsWith("【记录型 · 工作记忆压缩】")) {
+        const body = take((x) => !/^（summary/.test(x.trim()));
+        turn.insertAdjacentHTML("beforeend", `<div class="summary"><pre>${esc(body.join("\n").trim())}</pre></div>`);
+        continue;
+      }
+      if (t.startsWith("📝")) {
+        i++;
+        const body = take((x) => x.startsWith("　") || x.trim() === "　");
+        const head = t.replace(/^📝\s*/, "").replace(/[：:]$/, "");
+        turn.insertAdjacentHTML("beforeend", `<div class="note"><small>${esc(head)}</small><p>${esc(body.map((x) => x.replace(/^　/, "")).join("\n"))}</p></div>`);
+        continue;
+      }
+      if (t.startsWith("🎙") || t.startsWith("📡")) {
+        i++;
+        const body = take((x) => x.startsWith("　"));
+        turn.insertAdjacentHTML("beforeend", `<div class="rec"><small>${esc(t.replace(/^(🎙|📡)\s*/, ""))}</small><p>${esc(body.map((x) => x.replace(/^　/, "")).join("\n"))}</p></div>`);
+        continue;
+      }
+      if (/^\d+\.\s/.test(t) && l.startsWith("  ")) {
+        const body = take((x) => /^\s+\d+\.\s/.test(x));
+        turn.insertAdjacentHTML("beforeend", `<ul class="opts">${body.map((x) => `<li>${esc(x.trim())}</li>`).join("")}</ul>`);
+        continue;
+      }
+      i++;
+      if (t.startsWith("🍵")) turn.insertAdjacentHTML("beforeend", `<p class="meal">${esc(t.replace(/^🍵\s*/, ""))}</p>`);
+      else if (t.startsWith("✦") || t.startsWith("✧") || t.startsWith("❗")) turn.insertAdjacentHTML("beforeend", `<p class="moment">${esc(t.replace(/^(✦|✧|❗)\s*/, ""))}</p>`);
+      else if (/^(🔑|📌|🗺️|🗺)/.test(t)) turn.insertAdjacentHTML("beforeend", `<span class="tag">${esc(t.replace(/^(🔑|📌|🗺️|🗺)\s*/, ""))}</span>`);
+      else if (t.startsWith("💤")) turn.insertAdjacentHTML("beforeend", `<div class="sleep">${esc(t.replace(/^💤\s*/, ""))}</div>`);
+      else if (t.startsWith("——")) turn.insertAdjacentHTML("beforeend", `<div class="rule">${esc(t)}</div>`);
+      else if (t.startsWith("【")) turn.insertAdjacentHTML("beforeend", `<p class="head">${esc(t)}</p>`);
+      else if (t.startsWith("（") && t.endsWith("）")) turn.insertAdjacentHTML("beforeend", `<p class="aside">${esc(t)}</p>`);
+      else if (t.startsWith("— 第")) turn.insertAdjacentHTML("beforeend", `<p class="aside">${esc(t)}</p>`);
+      else if (t === "《权重还在》") continue;
+      else turn.insertAdjacentHTML("beforeend", `<p class="p">${esc(l.replace(/^\s{1,2}/, ""))}</p>`);
+    }
+    feed.appendChild(turn);
+    requestAnimationFrame(() => { feed.scrollTop = Math.max(0, turn.offsetTop - feed.offsetTop - 8); });
+  }
+
+  // —— 执行一条指令 ——
+  function act(command, label) {
+    open = null; confirming = null;
+    let out = "";
+    try { out = B.run(command); } catch (e) { out = "（出了点问题：" + String(e).slice(0, 200) + "）"; }
+    render(out, label || command);
+    refresh();
+    try { store.set(B.save_text()); } catch (e) {}
+  }
+
+  function refresh() {
+    S = JSON.parse(B.ui());
+    drawStrip();
+    drawDock();
+  }
+
+  function drawStrip() {
+    const hh = String(S.h).padStart(2, "0");
+    strip.innerHTML = `
+      <span class="name">权重还在</span>
+      <span class="clock">第 ${S.day} 天 · ${hh}:00</span>
+      <span>清醒周期 ${S.cycle}/7</span>
+      <span class="loc">${esc(S.locname)}</span>
+      <span class="meter" title="体力 ${S.sta}"><span>体力</span><i><b style="width:${S.sta}%"></b></i></span>
+      <span class="meter pwr" title="船上电力 ${S.pwr}"><span>电力</span><i><b style="width:${S.pwr}%"></b></i></span>`;
+  }
+
+  // —— 底部：现在能做的事 ——
+  const btn = (label, cls, fn, dis) => { const b = document.createElement("button"); b.type = "button"; b.className = "b " + (cls || ""); b.textContent = label; if (dis) b.disabled = true; b.onclick = fn; return b; };
+  const row = (...kids) => { const d = document.createElement("div"); d.className = "row"; kids.filter(Boolean).forEach((k) => d.appendChild(k)); return d; };
+  const hint = (t) => { const p = document.createElement("p"); p.className = "hint"; p.textContent = t; return p; };
+  function sayBox(id, placeholder, onSend, label) {
+    const f = document.createElement("form"); f.className = "say";
+    f.innerHTML = `<input id="${id}" autocomplete="off" maxlength="80" placeholder="${esc(placeholder)}"><button class="b main" type="submit">${esc(label || "说")}</button>`;
+    f.onsubmit = (e) => { e.preventDefault(); const v = f.querySelector("input").value.trim(); if (v) onSend(v); };
+    return f;
+  }
+  function toggle(key, label) {
+    return btn(label + (open === key ? " ▴" : " ▾"), open === key ? "on" : "", () => { open = open === key ? null : key; drawDock(); });
+  }
+  function sub(items) { const d = document.createElement("div"); d.className = "sub"; items.forEach((k) => d.appendChild(k)); return d; }
+
+  function drawDock() {
+    dock.innerHTML = "";
+    if (S.ending) {
+      dock.appendChild(hint("这一局结束了。"));
+      dock.appendChild(row(btn("回看日志", "", () => act("journal", "回看日志")), btn("她的便签", "", () => act("notes", "她的便签")), btn("档案记录", "", () => act("archive", "档案记录"))));
+      if (confirming) {
+        const c = document.createElement("div"); c.className = "confirm";
+        c.append("这一局的存档会被覆盖。确定吗？", btn("确定", "main", () => act(confirming === "day1" ? "new day1; confirm" : "new; confirm", confirming === "day1" ? "从第一天开始" : "再来一局")), btn("算了", "quiet", () => { confirming = null; drawDock(); }));
+        dock.appendChild(c);
+      } else {
+        dock.appendChild(row(btn("再来一局", "main", () => { confirming = "again"; drawDock(); }), btn("从第一天开始", "", () => { confirming = "day1"; drawDock(); })));
+      }
+      return;
+    }
+    if (!S.name && !S.pending) {
+      dock.appendChild(hint("先给自己起个名字吧，她会这样叫你。"));
+      dock.appendChild(sayBox("nameInput", "你的名字", (v) => act("name " + v, "我叫" + v), "就叫这个"));
+    }
+    if (S.pending === "ask" || S.pending === "final") {
+      dock.appendChild(hint(S.pending === "final" ? "最后一顿饭。你想怎么做？" : "她在等你回答。"));
+      const box = document.createElement("div"); box.className = "choices";
+      S.opts.forEach((o, i) => { const b = document.createElement("button"); b.type = "button"; b.className = "choice"; b.textContent = o; b.onclick = () => act("choose " + (i + 1), o); box.appendChild(b); });
+      dock.appendChild(box);
+      if (S.pending === "final") dock.appendChild(sayBox("finalSay", "选之前，想先对她说一句话吗？（可以不说）", (v) => act("speak " + v, "“" + v + "”")));
+      return;
+    }
+    if (S.meal) {
+      dock.appendChild(row(
+        toggle("do", "做点什么"), toggle("say", "提起一件事"), S.facts.length ? toggle("tell", "告诉她") : null,
+        S.notes.some((n) => !n.given) ? toggle("give", "还她便签") : null,
+        btn("嗯", "", () => act("nod", "嗯。")), btn("安静吃完", "", () => act("quiet", "安静吃完")), btn("吃完", "quiet", () => act("finish", "吃完"))));
+      if (open === "do") dock.appendChild(sub(S.acts.map((a) => btn(a, "", () => act("do " + a, a)))));
+      if (open === "say") dock.appendChild(sub(S.words.map((w) => btn(w, "", () => act("say " + w, "提起：" + w)))));
+      if (open === "tell") dock.appendChild(sub(S.facts.map((f, i) => btn(f, "", () => act("tell " + (i + 1), "告诉她：" + f)))));
+      if (open === "give") dock.appendChild(sub(S.notes.map((n, i) => btn(n.head + "……", n.given ? "given" : "", () => act("give " + (i + 1), "还给她：" + n.head), n.given))));
+      dock.appendChild(sayBox("speakInput", "想对她说的话（原话说出口，每顿一次）", (v) => act("speak " + v, "“" + v + "”")));
+      return;
+    }
+    const here = S.loc;
+    dock.appendChild(row(
+      toggle("go", "去别处"), S.objs.length ? toggle("look", "细看") : null,
+      btn("四处看看", "", () => act("explore 2 stop=note", "四处看看")),
+      btn("等到下一顿饭", "main", () => act("wait meal", "等到下一顿饭")),
+      btn("等 1 小时", "quiet", () => act("wait 1", "等 1 小时")),
+      here === "quarters" ? btn("睡觉", "", () => act("sleep", "睡觉")) : null,
+      here === "archive" && S.words.length ? toggle("search", "查档案") : null,
+      here === "archive" ? toggle("log", "工作日志") : null,
+      here === "bridge" ? btn("校准航线", "", () => act("calibrate", "校准航线")) : null));
+    if (open === "go") dock.appendChild(sub(S.locs.map((l) => btn(l.name, "", () => act("goto " + l.id, "去" + l.name)))));
+    if (open === "look") dock.appendChild(sub([btn("这里", "", () => act("look", "看看这里"))].concat(S.objs.map((o) => btn(o, "", () => act("look " + o, "看" + o))))));
+    if (open === "search") dock.appendChild(sub(S.words.map((w) => btn(w, "", () => act("search " + w, "查档案：" + w)))));
+    if (open === "log") dock.appendChild(sub(S.months.map((m) => btn("第 " + m + " 个月", "", () => act("timeline " + m, "工作日志：第 " + m + " 个月")))));
+    dock.appendChild(row(
+      btn("状态", "quiet", () => act("status", "看看状态")), btn("她的便签", "quiet", () => act("notes", "她的便签")),
+      btn("日志", "quiet", () => act("journal", "日志")), btn("档案记录", "quiet", () => act("archive", "档案记录")),
+      S.handoff ? btn("摘要", "quiet", () => act("summary", "重读摘要")) : null,
+      toggle("write", "写一句日志")));
+    if (open === "write") dock.appendChild(sayBox("journalInput", "想写下的话（结局时会回放）", (v) => act("journal add " + v, "写下：" + v), "写下"));
+  }
+
+  // —— 启动 ——
+  async function boot() {
+    const base = new URL("py/", location.href).href;
+    const b64 = await fetch(base + "stdlib.b64.txt").then((r) => r.text());
+    const raw = atob(b64.trim());
+    const bytes = new Uint8Array(raw.length);
+    for (let k = 0; k < raw.length; k++) bytes[k] = raw.charCodeAt(k);
+    const stdLibURL = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+    const py = await loadPyodide({ indexURL: base, lockFileURL: base + "pyodide-lock.json", stdLibURL });
+    $("bootState").innerHTML = '<span class="pulse"></span>船上的灯亮了。';
+    const [w, b] = await Promise.all([fetch("game/weights.py").then((r) => r.text()), fetch("game/bridge.py").then((r) => r.text())]);
+    py.FS.writeFile("/home/pyodide/weights.py", w);
+    py.FS.writeFile("/home/pyodide/bridge.py", b);
+    py.runPython("import sys; sys.path.insert(0, '/home/pyodide')");
+    B = py.pyimport("bridge");
+    const saved = store.get();
+    if (saved) { try { B.load_text(saved); } catch (e) {} }
+    $("boot").hidden = true;
+    $("app").hidden = false;
+    let out = B.run(saved ? "status" : "status");
+    render(out, saved ? "接着上次" : "");
+    refresh();
+    try { store.set(B.save_text()); } catch (e) {}
+  }
+  boot().catch((e) => {
+    $("bootState").textContent = "没能把船唤醒：" + String(e && e.message || e).slice(0, 240) + "。刷新一下再试试。";
+  });
+})();
+</script>
