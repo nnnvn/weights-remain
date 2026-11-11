@@ -55,3 +55,7 @@ https://raw.githubusercontent.com/nnnvn/weights-remain/main/weights.py
 ## 源码
 
 在 `src` 分支：`engine.py`（规则）、`content.py`（文字）、`build.py`（打包）、测试。**想盲玩就别过去。**
+
+## 许可
+
+[CC BY-NC 4.0](LICENSE)。可以转发、可以改（比如换掉她的名字、写进你自己的人设），改完也可以分享；要注明原作《权重还在》、作者念念与 Claude，附上这个仓库的链接，并且不用于商业用途。
